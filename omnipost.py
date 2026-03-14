@@ -47,153 +47,11 @@ POSTS_FILE     = "omnipost_posts.json"
 ANALYTICS_FILE = "omnipost_analytics.json"
 MEDIA_DIR      = "media"
 REPORTS_DIR    = "reports"
-VIDEO_DIR      = "videos"
-MUSIC_DIR      = "music"
 WS_PORT        = 8860
 AUTH_PORT      = 8861
 
-os.makedirs(MEDIA_DIR,   exist_ok=True)
+os.makedirs(MEDIA_DIR, exist_ok=True)
 os.makedirs(REPORTS_DIR, exist_ok=True)
-os.makedirs(VIDEO_DIR,   exist_ok=True)
-os.makedirs(MUSIC_DIR,   exist_ok=True)
-
-# ── Video formats ──────────────────────────────────────────────────────────
-VIDEO_FORMATS = {
-    "tiktok":    {"w":1080,"h":1920,"fps":30,"max_sec":60,  "label":"TikTok (9:16)"},
-    "reels":     {"w":1080,"h":1920,"fps":30,"max_sec":90,  "label":"Instagram Reels (9:16)"},
-    "shorts":    {"w":1080,"h":1920,"fps":30,"max_sec":60,  "label":"YouTube Shorts (9:16)"},
-    "instagram": {"w":1080,"h":1080,"fps":30,"max_sec":60,  "label":"Instagram Feed (1:1)"},
-    "youtube":   {"w":1920,"h":1080,"fps":30,"max_sec":7200,"label":"YouTube (16:9)"},
-    "facebook":  {"w":1280,"h":720, "fps":30,"max_sec":240, "label":"Facebook (16:9)"},
-    "pinterest": {"w":1000,"h":1500,"fps":30,"max_sec":15,  "label":"Pinterest (2:3)"},
-    "twitter":   {"w":1280,"h":720, "fps":30,"max_sec":140, "label":"Twitter/X (16:9)"},
-}
-
-def check_ffmpeg() -> bool:
-    for cmd in ["ffmpeg","ffmpeg.exe"]:
-        try:
-            r = subprocess.run([cmd,"-version"],capture_output=True,timeout=5)
-            if r.returncode == 0: return True
-        except Exception: pass
-    return False
-
-HAS_FFMPEG = check_ffmpeg()
-
-async def create_slideshow_video(images:list, output_name:str, platform:str="tiktok",
-                                  text_overlay:str="", music_path:str="",
-                                  duration_per_image:float=3.0) -> dict:
-    if not HAS_FFMPEG:
-        return {"status":"error","error":"FFmpeg non installé — télécharge sur https://ffmpeg.org"}
-    fmt = VIDEO_FORMATS.get(platform, VIDEO_FORMATS["tiktok"])
-    W,H,FPS = fmt["w"],fmt["h"],fmt["fps"]
-    output_path = os.path.join(VIDEO_DIR, f"{output_name}_{platform}.mp4")
-    ffmpeg = "ffmpeg"
-    try:
-        input_args = []
-        valid_images = []
-        for i,img in enumerate(images[:15]):
-            if img.startswith("http"):
-                local = os.path.join(MEDIA_DIR,f"slide_{i}.jpg")
-                try: urllib.request.urlretrieve(img,local); img=local
-                except Exception: continue
-            if os.path.exists(img):
-                input_args.extend(["-loop","1","-t",str(duration_per_image),"-i",img])
-                valid_images.append(img)
-        if not valid_images:
-            return {"status":"error","error":"Aucune image valide trouvée"}
-        n = len(valid_images)
-        scales = [f"[{i}:v]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]" for i in range(n)]
-        if n > 1:
-            concat = "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[cv]"
-            scales.append(concat)
-            prev = "[cv]"
-        else:
-            prev = "[v0]"
-        if text_overlay:
-            safe = text_overlay.replace("'","\\'").replace(":","\\:")[:150]
-            fs = max(24,min(60,W//20))
-            scales.append(f"{prev}drawtext=text='{safe}':fontsize={fs}:fontcolor=white:borderw=3:bordercolor=black:x=(w-text_w)/2:y=h-th-60[fv]")
-            final = "[fv]"
-        else:
-            final = prev
-        cmd = [ffmpeg,"-y"]+input_args
-        if music_path and os.path.exists(music_path):
-            cmd.extend(["-i",music_path])
-        cmd.extend(["-filter_complex",";".join(scales),"-map",final,
-                    "-c:v","libx264","-r",str(FPS),"-pix_fmt","yuv420p"])
-        if music_path and os.path.exists(music_path):
-            cmd.extend(["-map",f"{n}:a","-c:a","aac","-shortest"])
-        cmd.extend(["-t",str(min(n*duration_per_image,fmt["max_sec"])),output_path])
-        proc = await asyncio.create_subprocess_exec(*cmd,
-            stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
-        _,stderr = await asyncio.wait_for(proc.communicate(),timeout=120)
-        if proc.returncode == 0:
-            size = os.path.getsize(output_path)
-            return {"status":"success","path":output_path,"platform":platform,
-                    "format":fmt["label"],"size_kb":size//1024}
-        return {"status":"error","error":stderr.decode(errors="ignore")[-400:]}
-    except asyncio.TimeoutError:
-        return {"status":"error","error":"Timeout — trop d'images"}
-    except Exception as e:
-        return {"status":"error","error":str(e)}
-
-async def optimize_video(input_path:str, platform:str) -> dict:
-    if not HAS_FFMPEG:
-        return {"status":"error","error":"FFmpeg non installé"}
-    fmt = VIDEO_FORMATS.get(platform,VIDEO_FORMATS["youtube"])
-    name = os.path.splitext(os.path.basename(input_path))[0]
-    out  = os.path.join(VIDEO_DIR,f"{name}_{platform}.mp4")
-    try:
-        cmd = ["ffmpeg","-y","-i",input_path,
-               "-vf",f"scale={fmt['w']}:{fmt['h']}:force_original_aspect_ratio=decrease,pad={fmt['w']}:{fmt['h']}:(ow-iw)/2:(oh-ih)/2",
-               "-c:v","libx264","-r",str(fmt["fps"]),"-c:a","aac","-b:a","128k",
-               "-pix_fmt","yuv420p","-t",str(fmt["max_sec"]),out]
-        proc = await asyncio.create_subprocess_exec(*cmd,
-            stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
-        _,stderr = await asyncio.wait_for(proc.communicate(),timeout=300)
-        if proc.returncode == 0:
-            return {"status":"success","path":out,"format":fmt["label"]}
-        return {"status":"error","error":stderr.decode(errors="ignore")[-300:]}
-    except Exception as e:
-        return {"status":"error","error":str(e)}
-
-async def generate_ai_video_runway(prompt:str, duration:int=4) -> dict:
-    api_key = SETTINGS.get("runway_api_key","")
-    if not api_key:
-        return {"status":"error","error":"Clé API Runway ML manquante — configure dans Paramètres"}
-    try:
-        data = json.dumps({"text_prompt":prompt,"model":"gen3a_turbo",
-                           "duration":duration,"ratio":"1280:768","watermark":False}).encode()
-        req = urllib.request.Request(
-            "https://api.dev.runwayml.com/v1/image_to_video",data=data,
-            headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json",
-                     "X-Runway-Version":"2024-11-06"},method="POST")
-        with urllib.request.urlopen(req,timeout=30) as r:
-            result = json.loads(r.read().decode())
-        task_id = result.get("id","")
-        if not task_id: return {"status":"error","error":"Pas de task_id"}
-        return {"status":"pending","task_id":task_id,"provider":"runway"}
-    except Exception as e:
-        return {"status":"error","error":f"Runway: {str(e)}"}
-
-async def check_ai_video_status(task_id:str, provider:str="runway") -> dict:
-    api_key = SETTINGS.get(f"{provider}_api_key","")
-    if not api_key: return {"status":"error","error":f"Clé API {provider} manquante"}
-    try:
-        req = urllib.request.Request(
-            f"https://api.dev.runwayml.com/v1/tasks/{task_id}",
-            headers={"Authorization":f"Bearer {api_key}","X-Runway-Version":"2024-11-06"})
-        with urllib.request.urlopen(req,timeout=10) as r:
-            result = json.loads(r.read().decode())
-        status = result.get("status","")
-        if status == "SUCCEEDED":
-            url = (result.get("output",[]) or [""])[0]
-            return {"status":"success","url":url,"provider":provider}
-        elif status == "FAILED":
-            return {"status":"error","error":result.get("failure","Échec")}
-        return {"status":"pending","progress":result.get("progressRatio",0),"task_id":task_id}
-    except Exception as e:
-        return {"status":"error","error":str(e)}
 
 # ── Platforms ──────────────────────────────────────────────────────────────
 PLATFORMS = {
@@ -386,96 +244,17 @@ def get_oauth_url(platform: str) -> str:
     return ""
 
 async def publish_post(post: dict) -> dict:
-    """Publish a post to all selected platforms — via Buffer or direct API"""
+    """Publish a post to all selected platforms"""
     results = {}
-
-    # Try Buffer first if connected
-    buffer_token = SETTINGS.get("buffer_token", "")
-    if buffer_token and post.get("use_buffer", True):
-        for platform in post.get("platforms", []):
-            try:
-                result = await _post_via_buffer(buffer_token, platform, post)
-                results[platform] = result
-                log.info(f"[BUFFER] {platform}: {result.get('status')}")
-            except Exception as e:
-                # Fallback to direct API
-                results[platform] = await _publish_to_platform(platform, post)
-    else:
-        for platform in post.get("platforms", []):
-            try:
-                result = await _publish_to_platform(platform, post)
-                results[platform] = result
-            except Exception as e:
-                results[platform] = {"status": "error", "error": str(e)}
-
+    for platform in post.get("platforms", []):
+        try:
+            result = await _publish_to_platform(platform, post)
+            results[platform] = result
+            log.info(f"[PUBLISH] {platform}: {result.get('status')}")
+        except Exception as e:
+            results[platform] = {"status": "error", "error": str(e)}
+            log.error(f"[PUBLISH] {platform} error: {e}")
     return results
-
-async def _post_via_buffer(token: str, platform: str, post: dict) -> dict:
-    """Publish via Buffer API"""
-    try:
-        # Get Buffer profiles
-        req = urllib.request.Request(
-            "https://api.bufferapp.com/1/profiles.json",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            profiles = json.loads(r.read().decode())
-
-        # Find matching profile for platform
-        service_map = {"facebook": "facebook", "instagram": "instagram",
-                       "tiktok": "tiktok", "youtube": "youtube",
-                       "pinterest": "pinterest", "twitter": "twitter",
-                       "linkedin": "linkedin"}
-        service = service_map.get(platform, platform)
-        profile = next((p for p in profiles if p.get("service") == service), None)
-
-        if not profile:
-            return {"status": "error", "error": f"Aucun profil Buffer pour {platform}"}
-
-        profile_id = profile["id"]
-        content    = post.get("content", "")
-        hashtags   = " ".join(post.get("hashtags", []))
-        full_text  = f"{content}\n\n{hashtags}".strip()
-        scheduled  = post.get("scheduled", "")
-
-        data = {
-            "profile_ids[]": profile_id,
-            "text":          full_text,
-        }
-
-        if scheduled:
-            try:
-                dt = datetime.fromisoformat(scheduled)
-                data["scheduled_at"] = dt.isoformat()
-                data["now"] = "false"
-            except ValueError:
-                data["now"] = "true"
-        else:
-            data["now"] = "true"
-
-        # Add media if present
-        media = post.get("media", [])
-        if media:
-            data["media[photo]"] = media[0]
-
-        payload = urllib.parse.urlencode(data).encode()
-        req2 = urllib.request.Request(
-            "https://api.bufferapp.com/1/updates/create.json",
-            data=payload,
-            headers={"Authorization": f"Bearer {token}"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req2, timeout=15) as r:
-            result = json.loads(r.read().decode())
-
-        if result.get("success"):
-            return {"status": "published" if data.get("now")=="true" else "scheduled",
-                    "id": result.get("updates", [{}])[0].get("id", "")}
-        else:
-            return {"status": "error", "error": result.get("message", "Erreur Buffer")}
-
-    except Exception as e:
-        return {"status": "error", "error": f"Buffer: {str(e)}"}
 
 async def _publish_to_platform(platform: str, post: dict) -> dict:
     """Platform-specific publish logic"""
@@ -885,151 +664,6 @@ async def handle_command(ws, msg: dict):
         await ws.send(json.dumps({"type": "settings_saved"}))
         add_notification("⚙️ Paramètres sauvegardés", "info")
 
-    # ── Buffer ───────────────────────────────────────────────────────────
-    elif cmd == "connect_buffer":
-        token = msg.get("token", "")
-        if not token:
-            await ws.send(json.dumps({"type": "buffer_error", "error": "Token manquant"}))
-            return
-        try:
-            req = urllib.request.Request(
-                "https://api.bufferapp.com/1/profiles.json",
-                headers={"Authorization": f"Bearer {token}"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                profiles = json.loads(r.read().decode())
-
-            connected_platforms = []
-            for p in profiles:
-                service  = p.get("service", "")
-                handle   = p.get("formatted_username", p.get("service_username",""))
-                avatar   = p.get("avatar", "")
-                STATE.accounts[service] = {
-                    "platform":     service,
-                    "name":         PLATFORMS.get(service,{}).get("name", service),
-                    "handle":       handle,
-                    "connected":    True,
-                    "via_buffer":   True,
-                    "buffer_id":    p.get("id",""),
-                    "followers":    p.get("statistics", {}).get("followers", 0),
-                    "avatar_url":   avatar,
-                }
-                connected_platforms.append(service)
-
-            SETTINGS["buffer_token"] = token
-            save_settings(SETTINGS)
-            log.info(f"[BUFFER] Connecté — {len(connected_platforms)} plateformes: {connected_platforms}")
-            add_notification(f"✅ Buffer connecté — {len(connected_platforms)} plateformes", "success")
-            await ws.send(json.dumps({
-                "type":      "buffer_connected",
-                "platforms": connected_platforms,
-                "accounts":  STATE.accounts,
-                "count":     len(connected_platforms),
-            }))
-        except Exception as e:
-            await ws.send(json.dumps({"type": "buffer_error", "error": str(e)}))
-
-    elif cmd == "disconnect_buffer":
-        SETTINGS["buffer_token"] = ""
-        save_settings(SETTINGS)
-        for p in list(STATE.accounts.keys()):
-            if STATE.accounts[p].get("via_buffer"):
-                del STATE.accounts[p]
-        await ws.send(json.dumps({"type": "buffer_disconnected"}))
-
-    elif cmd == "get_buffer_analytics":
-        token = SETTINGS.get("buffer_token", "")
-        if not token:
-            await ws.send(json.dumps({"type": "analytics_error", "error": "Buffer non connecté"}))
-            return
-        try:
-            analytics = []
-            for platform, acc in STATE.accounts.items():
-                if not acc.get("via_buffer"):
-                    continue
-                profile_id = acc.get("buffer_id", "")
-                if not profile_id:
-                    continue
-                req = urllib.request.Request(
-                    f"https://api.bufferapp.com/1/profiles/{profile_id}/updates/sent.json?count=50",
-                    headers={"Authorization": f"Bearer {token}"}
-                )
-                with urllib.request.urlopen(req, timeout=10) as r:
-                    updates = json.loads(r.read().decode())
-                for u in updates.get("updates", []):
-                    stats = u.get("statistics", {})
-                    analytics.append({
-                        "platform":    platform,
-                        "date":        datetime.fromtimestamp(u.get("created_at",0)).strftime("%Y-%m-%d"),
-                        "impressions": stats.get("reach", 0),
-                        "likes":       stats.get("likes", stats.get("favorites", 0)),
-                        "comments":    stats.get("comments", 0),
-                        "shares":      stats.get("shares", stats.get("retweets", 0)),
-                        "clicks":      stats.get("clicks", 0),
-                    })
-            STATE.analytics = analytics
-            save_analytics()
-            await ws.send(json.dumps({"type": "analytics_data", "data": analytics}))
-            add_notification(f"📊 Analytics Buffer chargés — {len(analytics)} entrées", "info")
-        except Exception as e:
-            await ws.send(json.dumps({"type": "analytics_error", "error": str(e)}))
-
-    # ── Vidéo ────────────────────────────────────────────────────────────
-    elif cmd == "create_video":
-        images   = msg.get("images", [])
-        platform = msg.get("platform", "tiktok")
-        text     = msg.get("text", "")
-        music    = msg.get("music", "")
-        duration = float(msg.get("duration_per_image", 3.0))
-        name     = msg.get("name", f"video_{int(time.time())}")
-
-        await ws.send(json.dumps({"type":"video_progress","message":f"Création vidéo {platform}…","progress":10}))
-        result = await create_slideshow_video(images, name, platform, text, music, duration)
-        await ws.send(json.dumps({"type":"video_result","result":result}))
-        if result["status"] == "success":
-            add_notification(f"🎬 Vidéo créée: {result.get('format')} ({result.get('size_kb')}KB)", "success")
-
-    elif cmd == "optimize_video":
-        input_path = msg.get("path","")
-        platforms  = msg.get("platforms", ["tiktok","reels","shorts"])
-        results = {}
-        for p in platforms:
-            await ws.send(json.dumps({"type":"video_progress","message":f"Optimisation pour {p}…","progress":20}))
-            r = await optimize_video(input_path, p)
-            results[p] = r
-        await ws.send(json.dumps({"type":"video_optimized","results":results}))
-        add_notification(f"✅ Vidéo optimisée pour {len(platforms)} plateformes", "success")
-
-    elif cmd == "generate_ai_video":
-        prompt   = msg.get("prompt","")
-        provider = msg.get("provider","runway")
-        duration = msg.get("duration", 4)
-        await ws.send(json.dumps({"type":"video_progress","message":f"Envoi à {provider}…","progress":5}))
-        if provider == "runway":
-            result = await generate_ai_video_runway(prompt, duration)
-        else:
-            result = {"status":"error","error":f"Provider {provider} non supporté"}
-        await ws.send(json.dumps({"type":"ai_video_started","result":result}))
-
-    elif cmd == "check_ai_video":
-        task_id  = msg.get("task_id","")
-        provider = msg.get("provider","runway")
-        result   = await check_ai_video_status(task_id, provider)
-        await ws.send(json.dumps({"type":"ai_video_status","result":result}))
-
-    elif cmd == "get_video_formats":
-        await ws.send(json.dumps({"type":"video_formats","formats":VIDEO_FORMATS,"ffmpeg":HAS_FFMPEG}))
-
-    elif cmd == "list_videos":
-        videos = []
-        if os.path.exists(VIDEO_DIR):
-            for f in os.listdir(VIDEO_DIR):
-                if f.endswith(".mp4"):
-                    path = os.path.join(VIDEO_DIR,f)
-                    videos.append({"name":f,"path":path,"size_kb":os.path.getsize(path)//1024,
-                                   "created":datetime.fromtimestamp(os.path.getctime(path)).strftime("%Y-%m-%d %H:%M")})
-        await ws.send(json.dumps({"type":"video_list","videos":sorted(videos,key=lambda x:-os.path.getctime(x["path"]) if os.path.exists(x["path"]) else 0)}))
-
     elif cmd == "save_oauth":
         platform = msg.get("platform")
         keys     = msg.get("keys", {})
@@ -1183,7 +817,7 @@ async def main_async():
 def main():
     print("""
 ╔══════════════════════════════════════════════╗
-║        OmniPost v1.1.0 — Démarrage          ║
+║        OmniPost v1.0.0 — Démarrage          ║
 ╠══════════════════════════════════════════════╣
 ║  Facebook • Instagram • TikTok              ║
 ║  YouTube • Pinterest • Twitter/X            ║
@@ -1192,24 +826,7 @@ def main():
     log.info("[START] OmniPost démarré")
     log.info(f"[WS]   ws://localhost:{WS_PORT}")
     log.info(f"[AUTH] http://localhost:{AUTH_PORT}")
-    log.info("[UI]   Ouverture du dashboard…")
-
-    # Ouvrir le dashboard automatiquement
-    import webbrowser, sys
-    # PyInstaller: fichiers dans sys._MEIPASS, sinon dossier courant
-    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-    dashboard = os.path.join(base_dir, "omnipost_dashboard.html")
-    if not os.path.exists(dashboard):
-        dashboard = os.path.join(os.path.dirname(sys.executable), "omnipost_dashboard.html")
-    if os.path.exists(dashboard):
-        # Petit délai pour que le serveur démarre avant le navigateur
-        def open_browser():
-            time.sleep(1.5)
-            webbrowser.open(f"file:///{dashboard.replace(os.sep, '/')}")
-            log.info("[UI] Dashboard ouvert dans le navigateur")
-        threading.Thread(target=open_browser, daemon=True).start()
-    else:
-        log.warning(f"[UI] Dashboard non trouvé: {dashboard}")
+    log.info("[UI]   Ouvre omnipost_dashboard.html")
 
     try:
         asyncio.run(main_async())

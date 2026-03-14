@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.spec
+
+# Data files (personal)
+omnipost_settings.json
+omnipost_posts.json
+omnipost_analytics.json
+omnipost_users.json
+omnipost_history.json
+omnipost_audit.log
+omnipost_cert.pem
+omnipost_key.pem
+omnipost.log
+
+# Media
+media/
+videos/
+music/
+captures/
+reports/
+backups/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PyInstaller
+*.spec
+dist/
+build/

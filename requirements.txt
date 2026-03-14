@@ -1,0 +1,11 @@
+# OmniPost — Python dependencies
+websockets>=11.0
+
+# Optional — for AI features
+# anthropic>=0.18.0
+
+# Optional — for video creation
+# ffmpeg-python>=0.2.0
+
+# Optional — for building .exe
+# pyinstaller>=6.0
