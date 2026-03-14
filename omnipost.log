@@ -1,0 +1,203 @@
+2026-03-14 13:05:38,304 [INFO] [START] OmniPost démarré
+2026-03-14 13:05:38,304 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:05:38,304 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:05:38,305 [INFO] [UI]   Ouvre omnipost_dashboard.html
+2026-03-14 13:05:38,305 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:05:38,323 [INFO] server listening on [::1]:8860
+2026-03-14 13:05:38,323 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:05:38,323 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:05:38,324 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:08:36,721 [INFO] [START] OmniPost démarré
+2026-03-14 13:08:36,722 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:08:36,722 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:08:36,722 [INFO] [UI]   Ouvre omnipost_dashboard.html
+2026-03-14 13:12:29,833 [INFO] [START] OmniPost démarré
+2026-03-14 13:12:29,833 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:12:29,833 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:12:29,834 [INFO] [UI]   Ouvre omnipost_dashboard.html
+2026-03-14 13:12:42,976 [INFO] [START] OmniPost démarré
+2026-03-14 13:12:42,976 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:12:42,976 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:12:42,976 [INFO] [UI]   Ouvre omnipost_dashboard.html
+2026-03-14 13:16:32,714 [INFO] [START] OmniPost démarré
+2026-03-14 13:16:32,714 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:16:32,714 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:16:32,714 [INFO] [UI]   Ouvre omnipost_dashboard.html
+2026-03-14 13:16:32,715 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:16:32,731 [INFO] server listening on [::1]:8860
+2026-03-14 13:16:32,731 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:16:32,731 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:16:32,731 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:17:16,453 [INFO] connection open
+2026-03-14 13:17:16,454 [INFO] [WS] Client connecté: ('::1', 54355, 0, 0)
+2026-03-14 13:32:17,537 [INFO] [START] OmniPost démarré
+2026-03-14 13:32:17,537 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:32:17,537 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:32:17,537 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:32:17,540 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:32:17,557 [INFO] server listening on [::1]:8860
+2026-03-14 13:32:17,557 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:32:17,557 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:32:17,557 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:32:19,177 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 13:32:56,531 [INFO] [START] OmniPost démarré
+2026-03-14 13:32:56,532 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:32:56,532 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:32:56,532 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:32:56,534 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:32:56,550 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:32:56,550 [INFO] server listening on [::1]:8860
+2026-03-14 13:32:56,550 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:32:56,550 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:32:58,161 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 13:39:26,163 [INFO] [START] OmniPost démarré
+2026-03-14 13:39:26,163 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:39:26,163 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:39:26,163 [INFO] [UI]   Ouvre omnipost_dashboard.html
+2026-03-14 13:39:26,164 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:39:26,180 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:39:26,180 [INFO] server listening on [::1]:8860
+2026-03-14 13:39:26,180 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:39:26,181 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:41:29,914 [INFO] [START] OmniPost démarré
+2026-03-14 13:41:29,914 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:41:29,914 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:41:29,915 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:41:29,917 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:41:29,933 [INFO] server listening on [::1]:8860
+2026-03-14 13:41:29,933 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:41:29,933 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:41:29,933 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:41:31,567 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 13:56:06,854 [INFO] [START] OmniPost démarré
+2026-03-14 13:56:06,855 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:56:06,855 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:56:06,855 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:56:20,126 [INFO] [START] OmniPost démarré
+2026-03-14 13:56:20,126 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:56:20,126 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:56:20,126 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:56:20,129 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:56:20,145 [INFO] server listening on [::1]:8860
+2026-03-14 13:56:20,146 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:56:20,146 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:56:20,146 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:56:21,756 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 13:58:11,785 [INFO] [START] OmniPost démarré
+2026-03-14 13:58:11,786 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:58:11,786 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:58:11,786 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:59:21,575 [INFO] [START] OmniPost démarré
+2026-03-14 13:59:21,576 [INFO] [WS]   ws://localhost:8860
+2026-03-14 13:59:21,576 [INFO] [AUTH] http://localhost:8861
+2026-03-14 13:59:21,576 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 13:59:21,578 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 13:59:21,595 [INFO] server listening on [::1]:8860
+2026-03-14 13:59:21,595 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 13:59:21,595 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 13:59:21,595 [INFO] [SCHEDULER] Démarré
+2026-03-14 13:59:23,207 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 13:59:23,264 [INFO] connection open
+2026-03-14 13:59:23,264 [INFO] [WS] Client connecté: ('::1', 49960, 0, 0)
+2026-03-14 14:06:27,647 [INFO] [START] OmniPost démarré
+2026-03-14 14:06:27,647 [INFO] [WS]   ws://localhost:8860
+2026-03-14 14:06:27,648 [INFO] [AUTH] http://localhost:8861
+2026-03-14 14:06:27,648 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 14:06:35,777 [INFO] [START] OmniPost démarré
+2026-03-14 14:06:35,777 [INFO] [WS]   ws://localhost:8860
+2026-03-14 14:06:35,778 [INFO] [AUTH] http://localhost:8861
+2026-03-14 14:06:35,778 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 14:06:35,780 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 14:06:35,797 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 14:06:35,797 [INFO] server listening on [::1]:8860
+2026-03-14 14:06:35,797 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 14:06:35,798 [INFO] [SCHEDULER] Démarré
+2026-03-14 14:06:37,409 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 14:07:55,491 [INFO] [START] OmniPost démarré
+2026-03-14 14:07:55,492 [INFO] [WS]   ws://localhost:8860
+2026-03-14 14:07:55,492 [INFO] [AUTH] http://localhost:8861
+2026-03-14 14:07:55,492 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 14:07:55,495 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 14:07:55,511 [INFO] server listening on [::1]:8860
+2026-03-14 14:07:55,511 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 14:07:55,511 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 14:07:55,511 [INFO] [SCHEDULER] Démarré
+2026-03-14 14:07:57,123 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 14:07:57,183 [INFO] connection open
+2026-03-14 14:07:57,183 [INFO] [WS] Client connecté: ('::1', 52917, 0, 0)
+2026-03-14 14:33:33,753 [INFO] [START] OmniPost démarré
+2026-03-14 14:33:33,754 [INFO] [WS]   ws://localhost:8860
+2026-03-14 14:33:33,754 [INFO] [AUTH] http://localhost:8861
+2026-03-14 14:33:33,754 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 14:33:45,849 [INFO] [START] OmniPost démarré
+2026-03-14 14:33:45,849 [INFO] [WS]   ws://localhost:8860
+2026-03-14 14:33:45,849 [INFO] [AUTH] http://localhost:8861
+2026-03-14 14:33:45,849 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 14:33:45,852 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 14:33:45,868 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 14:33:45,868 [INFO] server listening on [::1]:8860
+2026-03-14 14:33:45,868 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 14:33:45,868 [INFO] [SCHEDULER] Démarré
+2026-03-14 14:33:47,478 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 14:33:47,633 [INFO] connection open
+2026-03-14 14:33:47,634 [INFO] [WS] Client connecté: ('::1', 52407, 0, 0)
+2026-03-14 14:36:33,088 [INFO] [START] OmniPost démarré
+2026-03-14 14:36:33,088 [INFO] [WS]   ws://localhost:8860
+2026-03-14 14:36:33,089 [INFO] [AUTH] http://localhost:8861
+2026-03-14 14:36:33,089 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 14:36:33,091 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 14:36:33,107 [INFO] server listening on [::1]:8860
+2026-03-14 14:36:33,108 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 14:36:33,108 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 14:36:33,108 [INFO] [SCHEDULER] Démarré
+2026-03-14 14:36:34,716 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 14:36:34,771 [INFO] connection open
+2026-03-14 14:36:34,772 [INFO] [WS] Client connecté: ('::1', 53529, 0, 0)
+2026-03-14 15:14:36,893 [INFO] [START] OmniPost démarré
+2026-03-14 15:14:36,893 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:14:36,894 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:14:36,894 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:14:41,366 [INFO] [START] OmniPost démarré
+2026-03-14 15:14:41,366 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:14:41,366 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:14:41,366 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:14:53,309 [INFO] [START] OmniPost démarré
+2026-03-14 15:14:53,309 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:14:53,310 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:14:53,310 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:14:53,312 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 15:14:53,329 [INFO] server listening on [::1]:8860
+2026-03-14 15:14:53,329 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 15:14:53,330 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 15:14:53,330 [INFO] [SCHEDULER] Démarré
+2026-03-14 15:14:54,947 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 15:17:42,849 [INFO] [START] OmniPost démarré
+2026-03-14 15:17:42,850 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:17:42,850 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:17:42,850 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:17:49,166 [INFO] [START] OmniPost démarré
+2026-03-14 15:17:49,167 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:17:49,167 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:17:49,167 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:17:49,170 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 15:17:49,185 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 15:17:49,185 [INFO] server listening on [::1]:8860
+2026-03-14 15:17:49,185 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 15:17:49,186 [INFO] [SCHEDULER] Démarré
+2026-03-14 15:17:50,801 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 15:21:37,390 [INFO] [START] OmniPost démarré
+2026-03-14 15:21:37,390 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:21:37,390 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:21:37,390 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:21:46,966 [INFO] [START] OmniPost démarré
+2026-03-14 15:21:46,966 [INFO] [WS]   ws://localhost:8860
+2026-03-14 15:21:46,966 [INFO] [AUTH] http://localhost:8861
+2026-03-14 15:21:46,966 [INFO] [UI]   Ouverture du dashboard…
+2026-03-14 15:21:46,969 [INFO] [AUTH] Serveur OAuth sur http://localhost:8861
+2026-03-14 15:21:46,985 [INFO] server listening on 127.0.0.1:8860
+2026-03-14 15:21:46,986 [INFO] server listening on [::1]:8860
+2026-03-14 15:21:46,986 [INFO] [WS] Serveur WebSocket sur ws://localhost:8860
+2026-03-14 15:21:46,986 [INFO] [SCHEDULER] Démarré
+2026-03-14 15:21:48,598 [INFO] [UI] Dashboard ouvert dans le navigateur
+2026-03-14 15:21:48,653 [INFO] connection open
+2026-03-14 15:21:48,654 [INFO] [WS] Client connecté: ('::1', 56755, 0, 0)

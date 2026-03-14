@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Competitor Analyzer — OmniPost</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#07070f;--bg2:#0e0e1a;--bg3:#151522;--bg4:#1c1c2e;--bg5:#242438;--border:#ffffff10;--border2:#ffffff18;--text:#f2f2fc;--text2:#8888aa;--text3:#4a4a6a;--blue:#5b8fff;--green:#00ffaa;--red:#ff4466;--amber:#ffcc44;--purple:#aa66ff;}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
+.logo{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
+.logo-i{width:26px;height:26px;background:linear-gradient(135deg,#5b8fff,#aa66ff,#ff4466);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+.search-bar{flex:1;max-width:600px;display:flex;gap:8px}
+.url-input{flex:1;background:var(--bg4);border:1px solid var(--border2);color:var(--text);padding:9px 14px;border-radius:8px;font-size:13px;font-family:'DM Mono',monospace;outline:none;transition:.15s}
+.url-input:focus{border-color:var(--blue)}
+.url-input::placeholder{color:var(--text3)}
+.btn{padding:8px 18px;border-radius:7px;font-size:13px;cursor:pointer;border:1px solid var(--border2);background:var(--bg4);color:var(--text2);font-family:'DM Sans',sans-serif;transition:.15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-p{background:linear-gradient(135deg,var(--blue),var(--purple));border-color:transparent;color:#fff;font-weight:600}
+.btn-p:hover{opacity:.9;color:#fff}
+.conn{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px;margin-left:auto}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--red)}
+.dot.on{background:var(--green);animation:pulse 2s infinite}
+.content{padding:24px;max-width:1400px;margin:0 auto}
+
+/* Progress */
+.progress-card{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;display:none}
+.prog-bar{height:4px;background:var(--bg4);border-radius:2px;overflow:hidden;margin:14px 0 8px}
+.prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--purple));transition:width .4s ease}
+.prog-step{font-size:12px;color:var(--text3)}
+
+/* Summary row */
+.summary-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px}
+.sum-card{background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:14px;text-align:center;position:relative;overflow:hidden}
+.sum-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.sum-card.blue::before{background:var(--blue)}.sum-card.green::before{background:var(--green)}.sum-card.amber::before{background:var(--amber)}.sum-card.red::before{background:var(--red)}.sum-card.purple::before{background:var(--purple)}.sum-card.teal::before{background:#00d4ff}
+.sum-val{font-size:28px;font-weight:800;font-family:'Syne',sans-serif;line-height:1}
+.sum-lbl{font-size:11px;color:var(--text3);margin-top:5px}
+.sum-sub{font-size:10px;margin-top:4px;font-family:'DM Mono',monospace}
+
+/* Main grid */
+.main-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.full-width{grid-column:1/-1}
+.card{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;overflow:hidden}
+.ch{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ct{font-size:13px;font-weight:700;font-family:'Syne',sans-serif}
+.grade{font-size:22px;font-weight:800;font-family:'Syne',sans-serif}
+.cb{padding:16px}
+
+/* Table */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:7px 10px;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);font-family:'Syne',sans-serif}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;color:var(--text2);line-height:1.5}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg3)}
+.val{color:var(--text);font-weight:500}
+.ok{color:var(--green)}.warn{color:var(--amber)}.bad{color:var(--red)}.info{color:var(--blue)}
+
+/* Score bar */
+.score-bar{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:5px}
+.score-fill{height:100%;border-radius:3px;transition:.6s}
+
+/* Tech pills */
+.tech-grid{display:flex;flex-wrap:wrap;gap:7px;padding:14px}
+.tech-pill{padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;background:var(--bg4);border:1px solid var(--border2)}
+
+/* Keywords */
+.kw-cloud{display:flex;flex-wrap:wrap;gap:5px;padding:14px}
+.kw{padding:3px 10px;border-radius:4px;font-size:11px;font-family:'DM Mono',monospace;background:var(--bg4);color:var(--text2)}
+
+/* Social links */
+.soc-link{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.soc-link:last-child{border-bottom:none}
+
+/* OG preview */
+.og-preview{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin:12px 16px}
+.og-img-ph{height:100px;background:var(--bg4);display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--text3)}
+.og-body{padding:10px 12px}
+.og-site{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em}
+.og-title{font-size:13px;font-weight:600;color:var(--text);margin:3px 0}
+.og-desc{font-size:11px;color:var(--text2);line-height:1.5}
+
+/* Security checks */
+.sec-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.sec-row:last-child{border-bottom:none}
+
+/* Robots */
+.robots-pre{background:var(--bg3);border-radius:6px;padding:10px;font-size:11px;font-family:'DM Mono',monospace;color:var(--text3);white-space:pre-wrap;max-height:150px;overflow-y:auto;margin:10px 16px}
+
+/* History */
+.hist-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer;transition:.15s}
+.hist-item:hover{background:var(--bg3)}
+.hist-url{flex:1;color:var(--blue);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist-date{color:var(--text3);font-family:'DM Mono',monospace;font-size:10px;flex-shrink:0}
+
+/* Empty state */
+.empty{text-align:center;padding:60px 24px;color:var(--text3)}
+.empty-icon{font-size:48px;margin-bottom:16px;display:block}
+.empty h2{font-size:20px;font-weight:700;font-family:'Syne',sans-serif;color:var(--text2);margin-bottom:8px}
+.empty p{font-size:13px;line-height:1.6;max-width:400px;margin:0 auto}
+
+/* Examples */
+.examples{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;justify-content:center}
+.example{padding:4px 12px;border-radius:20px;font-size:11px;cursor:pointer;background:var(--bg4);border:1px solid var(--border2);color:var(--text2);transition:.15s;font-family:'DM Mono',monospace}
+.example:hover{border-color:var(--blue);color:var(--blue)}
+
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fadein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.fadein{animation:fadein .3s ease}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"><div class="logo-i">🔍</div>Competitor Analyzer</div>
+  <div class="search-bar">
+    <input class="url-input" id="url-input" placeholder="https://concurrent.com" onkeydown="if(event.key==='Enter')analyze()">
+    <button class="btn btn-p" onclick="analyze()" id="analyze-btn">🔍 Analyser</button>
+    <button class="btn" onclick="exportReport()">📄 Exporter</button>
+  </div>
+  <div class="conn"><div class="dot" id="dot"></div><span id="conn-txt">Connexion...</span></div>
+</div>
+
+<div class="content">
+
+  <!-- Progress -->
+  <div class="progress-card" id="progress-card">
+    <div style="font-size:14px;font-weight:600;font-family:'Syne',sans-serif;color:var(--text)" id="prog-title">Analyse en cours...</div>
+    <div class="prog-bar"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
+    <div class="prog-step" id="prog-step">Connexion...</div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="empty-state" class="empty fadein">
+    <span class="empty-icon">🔍</span>
+    <h2>Analysez un concurrent</h2>
+    <p>Entrez l'URL d'un site concurrent pour obtenir une analyse complète : SEO, technologies, performance, sécurité, réseaux sociaux et estimations e-commerce.</p>
+    <div class="examples">
+      <div class="example" onclick="setUrl('apple.com')">apple.com</div>
+      <div class="example" onclick="setUrl('shopify.com')">shopify.com</div>
+      <div class="example" onclick="setUrl('airbnb.com')">airbnb.com</div>
+      <div class="example" onclick="setUrl('amazon.ca')">amazon.ca</div>
+      <div class="example" onclick="setUrl('etsy.com')">etsy.com</div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" style="display:none">
+
+    <!-- Header info -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:800;font-family:'Syne',sans-serif" id="r-url"></div>
+        <div style="font-size:12px;color:var(--text3);margin-top:3px" id="r-date"></div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn" onclick="saveToHistory()">💾 Sauvegarder</button>
+        <button class="btn" onclick="compareMode()">⚖️ Comparer</button>
+      </div>
+    </div>
+
+    <!-- Summary row -->
+    <div class="summary-row" id="summary-row"></div>
+
+    <!-- Main grid -->
+    <div class="main-grid">
+
+      <!-- SEO -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">🔍 SEO</span><span id="seo-grade" class="grade"></span></div>
+        <div class="cb" id="seo-body"></div>
+      </div>
+
+      <!-- Performance -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">⚡ Performance</span><span id="perf-grade" class="grade"></span></div>
+        <div class="cb" id="perf-body"></div>
+      </div>
+
+      <!-- Content -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">📝 Contenu & Structure</span></div>
+        <div class="cb" id="content-body"></div>
+      </div>
+
+      <!-- Security -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">🔒 Sécurité</span><span id="sec-grade" class="grade"></span></div>
+        <div class="cb" id="sec-body"></div>
+      </div>
+
+      <!-- Technologies - full width -->
+      <div class="card fadein full-width">
+        <div class="ch"><span class="ct">🔧 Technologies détectées</span><span id="tech-count" style="font-size:11px;color:var(--text3)"></span></div>
+        <div id="tech-body"></div>
+      </div>
+
+      <!-- Social -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">📱 Réseaux sociaux & Open Graph</span></div>
+        <div class="cb" id="social-body"></div>
+      </div>
+
+      <!-- E-commerce -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">🛍 E-commerce & Trafic estimé</span></div>
+        <div class="cb" id="ecom-body"></div>
+      </div>
+
+      <!-- Keywords -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">🔤 Mots-clés principaux</span></div>
+        <div id="kw-body"></div>
+      </div>
+
+      <!-- OG Preview -->
+      <div class="card fadein">
+        <div class="ch"><span class="ct">🖼 Aperçu partage (Open Graph)</span></div>
+        <div id="og-body"></div>
+      </div>
+
+      <!-- Robots -->
+      <div class="card fadein full-width">
+        <div class="ch"><span class="ct">🤖 Robots.txt & Sitemap</span></div>
+        <div class="cb" id="robots-body"></div>
+      </div>
+
+    </div>
+
+    <!-- History -->
+    <div class="card fadein" id="history-card" style="margin-top:8px;display:none">
+      <div class="ch"><span class="ct">📂 Historique des analyses</span><button class="btn" onclick="clearHistory()" style="font-size:10px;padding:3px 8px">Effacer</button></div>
+      <div id="history-list"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const WS_URL = 'ws://localhost:8870';
+let ws, lastResult = null;
+let analysisHistory = JSON.parse(localStorage.getItem('ca_history') || '[]');
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    document.getElementById('dot').className = 'dot on';
+    document.getElementById('conn-txt').textContent = 'Connecté';
+  };
+  ws.onclose = () => {
+    document.getElementById('dot').className = 'dot';
+    document.getElementById('conn-txt').textContent = 'Reconnexion...';
+    setTimeout(connect, 3000);
+  };
+  ws.onmessage = e => {
+    try { handleMsg(JSON.parse(e.data)); } catch(_) {}
+  };
+}
+
+function handleMsg(msg) {
+  if (msg.type === 'progress') {
+    document.getElementById('prog-fill').style.width = msg.pct + '%';
+    document.getElementById('prog-step').textContent = msg.step;
+  } else if (msg.type === 'result') {
+    lastResult = msg;
+    document.getElementById('progress-card').style.display = 'none';
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('analyze-btn').textContent = '🔍 Analyser';
+    document.getElementById('analyze-btn').disabled = false;
+    renderResult(msg);
+  } else if (msg.type === 'error') {
+    document.getElementById('progress-card').style.display = 'none';
+    document.getElementById('analyze-btn').textContent = '🔍 Analyser';
+    document.getElementById('analyze-btn').disabled = false;
+    alert('Erreur: ' + msg.error);
+  }
+}
+
+function analyze() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) { alert('Entre une URL'); return; }
+  if (!ws || ws.readyState !== 1) { alert('Backend non connecté — lance competitor_analyzer.py'); return; }
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('progress-card').style.display = 'block';
+  document.getElementById('prog-fill').style.width = '0%';
+  document.getElementById('prog-step').textContent = 'Démarrage...';
+  document.getElementById('analyze-btn').textContent = '⏳ Analyse...';
+  document.getElementById('analyze-btn').disabled = true;
+
+  ws.send(JSON.stringify({ cmd: 'analyze', url }));
+}
+
+function setUrl(url) {
+  document.getElementById('url-input').value = url;
+  analyze();
+}
+
+function renderResult(r) {
+  document.getElementById('r-url').textContent = r.url;
+  document.getElementById('r-date').textContent = 'Analysé le ' + r.analyzed_at;
+
+  renderSummary(r);
+  renderSEO(r.seo);
+  renderPerf(r.perf);
+  renderContent(r.content);
+  renderSecurity(r.security);
+  renderTech(r.tech);
+  renderSocial(r.social);
+  renderEcom(r.ecom);
+  renderKeywords(r.content.top_keywords);
+  renderOG(r.social.og, r.url);
+  renderRobots(r);
+}
+
+function renderSummary(r) {
+  const el = document.getElementById('summary-row');
+  const perfScore = r.perf.score;
+  const secScore  = Math.round(r.security.score / r.security.max * 100);
+  const seoScore  = calcSEOScore(r.seo);
+
+  el.innerHTML = `
+    <div class="sum-card blue">
+      <div class="sum-val">${seoScore}</div>
+      <div class="sum-lbl">Score SEO</div>
+      <div class="sum-sub" style="color:${seoScore>=70?'var(--green)':seoScore>=40?'var(--amber)':'var(--red)'}">${seoScore>=70?'Bon':'À améliorer'}</div>
+    </div>
+    <div class="sum-card green">
+      <div class="sum-val">${r.perf.load_ms}</div>
+      <div class="sum-lbl">Chargement (ms)</div>
+      <div class="sum-sub" style="color:${r.perf.load_ms<1000?'var(--green)':r.perf.load_ms<3000?'var(--amber)':'var(--red)'}">${r.perf.load_ms<1000?'Rapide':r.perf.load_ms<3000?'Moyen':'Lent'}</div>
+    </div>
+    <div class="sum-card amber">
+      <div class="sum-val">${r.tech.length}</div>
+      <div class="sum-lbl">Technologies</div>
+      <div class="sum-sub" style="color:var(--text3)">${r.tech.map(t=>t.name).slice(0,2).join(', ')}</div>
+    </div>
+    <div class="sum-card purple">
+      <div class="sum-val">${r.security.grade}</div>
+      <div class="sum-lbl">Sécurité</div>
+      <div class="sum-sub" style="color:${r.security.grade==='A'?'var(--green)':r.security.grade==='B'?'var(--amber)':'var(--red)'}">${r.security.score}/${r.security.max} headers</div>
+    </div>
+    <div class="sum-card teal">
+      <div class="sum-val">${r.content.word_count}</div>
+      <div class="sum-lbl">Mots</div>
+      <div class="sum-sub" style="color:var(--text3)">${r.content.read_time_min} min lecture</div>
+    </div>
+    <div class="sum-card ${r.ecom.is_ecom?'green':'red'}">
+      <div class="sum-val">${r.ecom.is_ecom?'✓':'—'}</div>
+      <div class="sum-lbl">E-commerce</div>
+      <div class="sum-sub" style="color:var(--text3);font-size:9px">${r.ecom.traffic_estimate.split('—')[0]}</div>
+    </div>`;
+}
+
+function calcSEOScore(seo) {
+  let s = 0;
+  if (seo.title && seo.title_len >= 30 && seo.title_len <= 60) s += 20;
+  else if (seo.title) s += 10;
+  if (seo.meta_desc && seo.meta_len >= 100 && seo.meta_len <= 160) s += 20;
+  else if (seo.meta_desc) s += 10;
+  if (seo.h1_count === 1) s += 15;
+  else if (seo.h1_count > 0) s += 8;
+  if (seo.h2_count > 0) s += 10;
+  if (seo.has_schema) s += 10;
+  if (seo.has_og) s += 5;
+  if (seo.has_canonical) s += 5;
+  if (seo.img_no_alt === 0) s += 10;
+  else if (seo.img_total > 0) s += Math.round(5 * (1 - seo.img_no_alt/seo.img_total));
+  return Math.min(100, s);
+}
+
+function renderSEO(seo) {
+  const score = calcSEOScore(seo);
+  const gradeEl = document.getElementById('seo-grade');
+  if (gradeEl) {
+    gradeEl.textContent = score;
+    gradeEl.style.color = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--amber)' : 'var(--red)';
+  }
+
+  const scoreColor = s => s >= 70 ? 'var(--green)' : s >= 40 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('seo-body').innerHTML = `
+    <table>
+      <tr><th>Élément</th><th>Valeur</th><th>Statut</th></tr>
+      <tr><td>Title</td><td class="val">${seo.title ? seo.title.slice(0,50)+'...' : '—'}</td><td class="${seo.title_score==='OK'?'ok':seo.title_score==='MANQUANT'?'bad':'warn'}">${seo.title_score}</td></tr>
+      <tr><td>Longueur title</td><td class="val">${seo.title_len} car.</td><td class="${30<=seo.title_len&&seo.title_len<=60?'ok':'warn'}">${seo.title_len}/60</td></tr>
+      <tr><td>Meta description</td><td class="val">${seo.meta_desc ? seo.meta_desc.slice(0,60)+'...' : '—'}</td><td class="${seo.meta_score==='OK'?'ok':seo.meta_score==='MANQUANT'?'bad':'warn'}">${seo.meta_score}</td></tr>
+      <tr><td>H1</td><td class="val">${seo.h1_count} balise(s)</td><td class="${seo.h1_count===1?'ok':seo.h1_count===0?'bad':'warn'}">${seo.h1_count===1?'OK':seo.h1_count===0?'Manquant':'Multiple'}</td></tr>
+      <tr><td>H2</td><td class="val">${seo.h2_count} balise(s)</td><td class="${seo.h2_count>0?'ok':'warn'}">${seo.h2_count>0?'OK':'Aucun'}</td></tr>
+      <tr><td>H3</td><td class="val">${seo.h3_count} balise(s)</td><td class="info">${seo.h3_count}</td></tr>
+      <tr><td>Images sans ALT</td><td class="val">${seo.img_no_alt}/${seo.img_total}</td><td class="${seo.img_no_alt===0?'ok':seo.img_no_alt<5?'warn':'bad'}">${seo.img_no_alt===0?'OK':seo.img_no_alt+' à corriger'}</td></tr>
+      <tr><td>Schema.org</td><td class="val">${seo.has_schema?'Oui':'Non'}</td><td class="${seo.has_schema?'ok':'warn'}">${seo.has_schema?'✓ Présent':'Absent'}</td></tr>
+      <tr><td>Open Graph</td><td class="val">${seo.has_og?'Oui':'Non'}</td><td class="${seo.has_og?'ok':'warn'}">${seo.has_og?'✓':'Absent'}</td></tr>
+      <tr><td>Canonical</td><td class="val">${seo.has_canonical?'Oui':'Non'}</td><td class="${seo.has_canonical?'ok':'warn'}">${seo.has_canonical?'✓':'Absent'}</td></tr>
+    </table>
+    ${seo.h1_list.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border)"><div style="font-size:10px;color:var(--text3);margin-bottom:5px">H1 détectés:</div>${seo.h1_list.map(h=>`<div style="font-size:11px;color:var(--text2);padding:2px 0">"${h}"</div>`).join('')}</div>` : ''}`;
+}
+
+function renderPerf(perf) {
+  const gradeEl = document.getElementById('perf-grade');
+  if (gradeEl) {
+    gradeEl.textContent = perf.score + '/100';
+    gradeEl.style.color = perf.score >= 70 ? 'var(--green)' : perf.score >= 40 ? 'var(--amber)' : 'var(--red)';
+    gradeEl.style.fontSize = '14px';
+  }
+  document.getElementById('perf-body').innerHTML = `
+    <table>
+      <tr><th>Métrique</th><th>Valeur</th><th>Éval.</th></tr>
+      <tr><td>Chargement</td><td class="val">${perf.load_ms} ms</td><td class="${perf.load_ms<1000?'ok':perf.load_ms<3000?'warn':'bad'}">${perf.load_ms<1000?'Rapide':perf.load_ms<3000?'Moyen':'Lent'}</td></tr>
+      <tr><td>Taille HTML</td><td class="val">${perf.size_kb} KB</td><td class="${perf.size_kb<200?'ok':perf.size_kb<500?'warn':'bad'}">${perf.size_kb<200?'OK':perf.size_kb<500?'Moyen':'Lourd'}</td></tr>
+      <tr><td>Scripts JS</td><td class="val">${perf.scripts}</td><td class="${perf.scripts<=8?'ok':perf.scripts<=12?'warn':'bad'}">${perf.scripts<=8?'OK':perf.scripts<=12?'Beaucoup':'Trop'}</td></tr>
+      <tr><td>CSS</td><td class="val">${perf.styles}</td><td class="info">${perf.styles}</td></tr>
+      <tr><td>Images</td><td class="val">${perf.images}</td><td class="info">${perf.images}</td></tr>
+      <tr><td>Lazy loading</td><td class="val">${perf.lazy} images</td><td class="${perf.lazy>0?'ok':'warn'}">${perf.lazy>0?'OK':'Absent'}</td></tr>
+      <tr><td>Gzip</td><td class="val">${perf.gzip?'Activé':'Non détecté'}</td><td class="${perf.gzip?'ok':'warn'}">${perf.gzip?'✓':perf.gzip===false?'À activer':'?'}</td></tr>
+      <tr><td>Cache</td><td class="val" style="font-size:10px;font-family:'DM Mono',monospace">${perf.cache}</td><td class="info">—</td></tr>
+    </table>
+    ${perf.tips.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border)">${perf.tips.map(t=>`<div style="font-size:11px;color:var(--amber);padding:2px 0">• ${t}</div>`).join('')}</div>` : ''}`;
+}
+
+function renderContent(content) {
+  document.getElementById('content-body').innerHTML = `
+    <table>
+      <tr><th>Élément</th><th>Valeur</th></tr>
+      <tr><td>Nombre de mots</td><td class="val">${content.word_count.toLocaleString()}</td></tr>
+      <tr><td>Temps de lecture</td><td class="val">${content.read_time_min} min</td></tr>
+      <tr><td>Liens internes</td><td class="val">${content.links_internal}</td></tr>
+      <tr><td>Liens externes</td><td class="val">${content.links_external}</td></tr>
+      <tr><td>Formulaire</td><td class="${content.has_form?'ok':'info'}">${content.has_form?'✓ Présent':'Absent'}</td></tr>
+      <tr><td>Vidéo</td><td class="${content.has_video?'ok':'info'}">${content.has_video?'✓ Présent':'Absent'}</td></tr>
+      <tr><td>Chat live</td><td class="${content.has_chat?'ok':'info'}">${content.has_chat?'✓ Présent':'Absent'}</td></tr>
+      <tr><td>Popup / Modal</td><td class="info">${content.has_popup?'✓ Présent':'Absent'}</td></tr>
+      <tr><td>Blog / Actualités</td><td class="${content.has_blog?'ok':'info'}">${content.has_blog?'✓ Présent':'Absent'}</td></tr>
+      ${content.emails.length ? `<tr><td>Emails</td><td class="val" style="font-family:'DM Mono',monospace;font-size:10px">${content.emails.join(', ')}</td></tr>` : ''}
+    </table>
+    ${content.external_list.length ? `<div style="padding:10px 16px;border-top:1px solid var(--border)"><div style="font-size:10px;color:var(--text3);margin-bottom:5px">Liens externes principaux:</div>${content.external_list.slice(0,5).map(l=>`<div style="font-size:10px;color:var(--blue);padding:1px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l}</div>`).join('')}</div>` : ''}`;
+}
+
+function renderSecurity(sec) {
+  const gradeEl = document.getElementById('sec-grade');
+  if (gradeEl) {
+    gradeEl.textContent = sec.grade;
+    gradeEl.style.color = sec.grade==='A'?'var(--green)':sec.grade==='B'?'var(--amber)':'var(--red)';
+  }
+  document.getElementById('sec-body').innerHTML = Object.entries(sec.checks).map(([k,v]) => `
+    <div class="sec-row">
+      <span style="font-size:12px;color:var(--text2)">${k}</span>
+      <span class="${v?'ok':'bad'}">${v?'✓ Présent':'✗ Absent'}</span>
+    </div>`).join('') + `
+    <div style="padding:12px 0;border-top:1px solid var(--border);margin-top:4px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:5px">Score: ${sec.score}/${sec.max}</div>
+      <div class="score-bar"><div class="score-fill" style="width:${Math.round(sec.score/sec.max*100)}%;background:${sec.grade==='A'?'var(--green)':sec.grade==='B'?'var(--amber)':'var(--red)'}"></div></div>
+    </div>`;
+}
+
+function renderTech(tech) {
+  const el = document.getElementById('tech-body');
+  const cnt = document.getElementById('tech-count');
+  if (cnt) cnt.textContent = tech.length + ' détectées';
+  if (!tech.length) { el.innerHTML = '<div style="padding:16px;font-size:12px;color:var(--text3)">Aucune technologie détectée</div>'; return; }
+
+  const cats = {};
+  tech.forEach(t => { if (!cats[t.cat]) cats[t.cat] = []; cats[t.cat].push(t); });
+  const catColors = {"CMS":"var(--blue)","E-commerce":"var(--green)","Framework":"var(--purple)","Analytics":"var(--amber)","Email":"#00d4ff","CRM":"#ff6b35","Paiement":"var(--green)","Pub":"#ff66aa","CDN":"var(--blue)","Hosting":"var(--text2)","Chat":"var(--amber)","Serveur":"var(--text3)"};
+
+  el.innerHTML = Object.entries(cats).map(([cat, items]) => `
+    <div style="padding:10px 16px;border-bottom:1px solid var(--border)">
+      <div style="font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">${cat}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${items.map(t => `<div class="tech-pill" style="border-color:${catColors[cat]||'var(--border2)'}33;color:${catColors[cat]||'var(--text2)'}">${t.icon} ${t.name}</div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function renderSocial(social) {
+  const links = social.social_links || {};
+  const icons = {Facebook:'📘',Instagram:'📸',TikTok:'🎵',YouTube:'▶️',Twitter:'🐦',LinkedIn:'💼',Pinterest:'📌'};
+  document.getElementById('social-body').innerHTML = `
+    <table>
+      <tr><th>Plateforme</th><th>Profil</th></tr>
+      ${Object.entries(links).map(([p,url]) => `<tr><td>${icons[p]||''} ${p}</td><td class="val"><a href="${url}" target="_blank" style="color:var(--blue);text-decoration:none;font-family:'DM Mono',monospace;font-size:10px">${url.replace('https://','').slice(0,50)}</a></td></tr>`).join('')}
+      ${!Object.keys(links).length ? '<tr><td colspan="2" style="color:var(--text3)">Aucun profil social détecté</td></tr>' : ''}
+    </table>
+    <div style="padding:10px 16px;border-top:1px solid var(--border)">
+      <table>
+        <tr><th>Twitter Card</th><th>${social.twitter.card||'—'}</th></tr>
+        <tr><td style="font-size:11px;color:var(--text3)">OG Title</td><td style="font-size:11px;color:var(--text2)">${social.og.title?.slice(0,50)||'—'}</td></tr>
+        <tr><td style="font-size:11px;color:var(--text3)">OG Description</td><td style="font-size:11px;color:var(--text2)">${social.og.description?.slice(0,80)||'—'}</td></tr>
+      </table>
+    </div>`;
+}
+
+function renderEcom(ecom) {
+  document.getElementById('ecom-body').innerHTML = `
+    <div style="text-align:center;padding:14px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:32px;font-weight:800;font-family:'Syne',sans-serif;color:${ecom.is_ecom?'var(--green)':'var(--text3)'}">${ecom.is_ecom?'E-COMMERCE':'Standard'}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px">${ecom.traffic_estimate||'—'}</div>
+    </div>
+    ${ecom.signals.length ? `<div style="padding:12px 16px">
+      ${ecom.signals.map(s => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"><span style="color:var(--green)">✓</span>${s}</div>`).join('')}
+    </div>` : '<div style="padding:14px;font-size:12px;color:var(--text3)">Pas de signaux e-commerce détectés</div>'}`;
+}
+
+function renderKeywords(kws) {
+  const el = document.getElementById('kw-body');
+  if (!kws || !kws.length) { el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--text3)">—</div>'; return; }
+  const max = kws[0][1];
+  el.innerHTML = '<div class="kw-cloud">' + kws.map(([w,c]) => {
+    const size = Math.round(10 + (c/max)*6);
+    const opacity = 0.5 + (c/max)*0.5;
+    return `<div class="kw" style="font-size:${size}px;opacity:${opacity};cursor:pointer" onclick="setSearchUrl('${w}')" title="${c} occurrences">${w} <span style="color:var(--text3);font-size:9px">${c}</span></div>`;
+  }).join('') + '</div>';
+}
+
+function setSearchUrl(kw) {
+  window.open('https://www.google.com/search?q=' + encodeURIComponent(kw), '_blank');
+}
+
+function renderOG(og, url) {
+  document.getElementById('og-body').innerHTML = `
+    <div class="og-preview">
+      ${og.image ? `<img src="${og.image}" style="width:100%;height:120px;object-fit:cover" onerror="this.style.display='none'">` : '<div class="og-img-ph">🖼</div>'}
+      <div class="og-body">
+        <div class="og-site">${new URL(url).hostname}</div>
+        <div class="og-title">${og.title || 'Titre non défini'}</div>
+        <div class="og-desc">${og.description || 'Pas de description Open Graph'}</div>
+      </div>
+    </div>`;
+}
+
+function renderRobots(r) {
+  document.getElementById('robots-body').innerHTML = `
+    <table>
+      <tr>
+        <td style="width:50%">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="${r.has_robots?'ok':'warn'}" style="font-size:16px">${r.has_robots?'✓':'✗'}</span>
+            <div><div style="font-size:12px;font-weight:600">robots.txt</div><div style="font-size:10px;color:var(--text3)">${r.has_robots?'Présent':'Absent'}</div></div>
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="${r.has_sitemap?'ok':'warn'}" style="font-size:16px">${r.has_sitemap?'✓':'✗'}</span>
+            <div><div style="font-size:12px;font-weight:600">sitemap.xml</div><div style="font-size:10px;color:var(--text3)">${r.has_sitemap?'Présent':'Absent'}</div></div>
+          </div>
+        </td>
+      </tr>
+    </table>
+    ${r.robots_txt ? `<pre class="robots-pre">${r.robots_txt}</pre>` : ''}`;
+}
+
+function saveToHistory() {
+  if (!lastResult) return;
+  const entry = { url: lastResult.url, date: lastResult.analyzed_at, seo: calcSEOScore(lastResult.seo), perf: lastResult.perf.score, sec: lastResult.security.grade };
+  analysisHistory = [entry, ...analysisHistory.filter(h => h.url !== entry.url)].slice(0, 20);
+  localStorage.setItem('ca_history', JSON.stringify(analysisHistory));
+  renderHistory();
+  document.getElementById('history-card').style.display = 'block';
+  alert('Sauvegardé dans l\'historique !');
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (!analysisHistory.length) { el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--text3)">Aucune analyse sauvegardée</div>'; return; }
+  el.innerHTML = analysisHistory.map(h => `
+    <div class="hist-item" onclick="setUrl('${h.url}')">
+      <span class="hist-url">${h.url}</span>
+      <span class="info" style="font-size:10px">SEO:${h.seo}</span>
+      <span class="info" style="font-size:10px">Perf:${h.perf}</span>
+      <span class="${h.sec==='A'?'ok':h.sec==='B'?'warn':'bad'}" style="font-size:10px">${h.sec}</span>
+      <span class="hist-date">${h.date}</span>
+    </div>`).join('');
+}
+
+function clearHistory() {
+  analysisHistory = [];
+  localStorage.setItem('ca_history', '[]');
+  renderHistory();
+}
+
+function compareMode() {
+  alert('Fonctionnalité de comparaison — entre un autre URL pour comparer côte à côte.');
+}
+
+function exportReport() {
+  if (!lastResult) { alert('Lance une analyse d\'abord'); return; }
+  const r = lastResult;
+  const lines = [
+    'RAPPORT ANALYSE CONCURRENT — OmniPost',
+    '=' .repeat(50),
+    `URL: ${r.url}`,
+    `Date: ${r.analyzed_at}`,
+    '',
+    '--- SEO ---',
+    `Title: ${r.seo.title} (${r.seo.title_len} car.) — ${r.seo.title_score}`,
+    `Meta: ${r.seo.meta_desc?.slice(0,80)}... (${r.seo.meta_len} car.)`,
+    `H1: ${r.seo.h1_count}  H2: ${r.seo.h2_count}  H3: ${r.seo.h3_count}`,
+    `Images sans ALT: ${r.seo.img_no_alt}/${r.seo.img_total}`,
+    `Schema.org: ${r.seo.has_schema?'Oui':'Non'}`,
+    '',
+    '--- PERFORMANCE ---',
+    `Chargement: ${r.perf.load_ms}ms`,
+    `Taille: ${r.perf.size_kb}KB`,
+    `Scripts: ${r.perf.scripts}  CSS: ${r.perf.styles}  Images: ${r.perf.images}`,
+    `Gzip: ${r.perf.gzip?'Oui':'Non'}`,
+    `Score: ${r.perf.score}/100`,
+    '',
+    '--- SECURITE ---',
+    `Grade: ${r.security.grade} (${r.security.score}/${r.security.max})`,
+    ...Object.entries(r.security.checks).map(([k,v]) => `${k}: ${v?'OK':'Absent'}`),
+    '',
+    '--- TECHNOLOGIES ---',
+    ...r.tech.map(t => `${t.icon} ${t.name} (${t.cat})`),
+    '',
+    '--- RESEAUX SOCIAUX ---',
+    ...Object.entries(r.social.social_links).map(([p,u]) => `${p}: ${u}`),
+    '',
+    '--- E-COMMERCE ---',
+    `E-commerce: ${r.ecom.is_ecom?'Oui':'Non'}`,
+    `Trafic estimé: ${r.ecom.traffic_estimate}`,
+    ...r.ecom.signals.map(s => `• ${s}`),
+    '',
+    '--- MOTS-CLES ---',
+    r.content.top_keywords.slice(0,10).map(([w,c]) => `${w}: ${c}`).join('  '),
+    '',
+    `Rapport généré par OmniPost Competitor Analyzer`,
+  ];
+  const blob = new Blob([lines.join('\n')], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.download = 'analyse_' + new URL(r.url).hostname + '_' + Date.now() + '.txt';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+}
+
+// Init
+if (analysisHistory.length) {
+  document.getElementById('history-card').style.display = 'block';
+  renderHistory();
+}
+connect();
+</script>
+</body>
+</html>

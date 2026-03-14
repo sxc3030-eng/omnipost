@@ -1,0 +1,80 @@
+{
+  "auto_schedule": false,
+  "best_times": {
+    "facebook": [
+      "09:00",
+      "13:00",
+      "17:00"
+    ],
+    "instagram": [
+      "08:00",
+      "12:00",
+      "19:00"
+    ],
+    "tiktok": [
+      "07:00",
+      "14:00",
+      "21:00"
+    ],
+    "youtube": [
+      "15:00",
+      "20:00"
+    ],
+    "pinterest": [
+      "14:00",
+      "21:00"
+    ],
+    "twitter": [
+      "09:00",
+      "12:00",
+      "18:00"
+    ]
+  },
+  "default_hashtags": {
+    "facebook": [],
+    "instagram": [
+      "#reels",
+      "#instagood",
+      "#viral"
+    ],
+    "tiktok": [
+      "#fyp",
+      "#viral",
+      "#trending"
+    ],
+    "youtube": [],
+    "pinterest": [],
+    "twitter": []
+  },
+  "ai_enabled": false,
+  "anthropic_api_key": "",
+  "watermark_text": "",
+  "timezone": "America/Toronto",
+  "oauth": {
+    "facebook": {
+      "app_id": "",
+      "app_secret": ""
+    },
+    "instagram": {
+      "app_id": "",
+      "app_secret": ""
+    },
+    "tiktok": {
+      "client_key": "",
+      "client_secret": ""
+    },
+    "youtube": {
+      "client_id": "",
+      "client_secret": ""
+    },
+    "pinterest": {
+      "app_id": "",
+      "app_secret": ""
+    },
+    "twitter": {
+      "api_key": "",
+      "api_secret": "",
+      "bearer_token": ""
+    }
+  }
+}

@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>OmniPost — Social Media Hub</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080810;--bg2:#0f0f1a;--bg3:#161625;--bg4:#1e1e30;--bg5:#252538;
+  --border:#ffffff08;--border2:#ffffff12;--border3:#ffffff20;
+  --text:#f0f0f8;--text2:#8888aa;--text3:#4a4a6a;
+  --fb:#1877f2;--ig:#e1306c;--tt:#ff0050;--yt:#ff0000;--pt:#e60023;--tw:#1da1f2;--li:#0077b5;
+  --green:#00ffaa;--greendim:#003322;
+  --blue:#5b8fff;--bluedim:#0f1f4d;
+  --red:#ff4466;--reddim:#330011;
+  --amber:#ffcc44;--amberdim:#332200;
+  --purple:#aa66ff;
+}
+html{height:100%}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* Topbar */
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border2);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:16px}
+.logo{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}
+.logo-mark{width:28px;height:28px;background:linear-gradient(135deg,#5b8fff,#aa66ff,#ff4466);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.conn-status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3)}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 2s infinite}
+.conn-dot.ok{background:var(--green)}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.btn{padding:6px 14px;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;transition:.15s;border:1px solid var(--border3);background:var(--bg4);color:var(--text2);font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.btn:hover{border-color:var(--blue);color:var(--blue)}
+.btn-primary{background:linear-gradient(135deg,var(--blue),var(--purple));border-color:transparent;color:#fff}
+.btn-primary:hover{opacity:.9;color:#fff}
+.btn-green{background:var(--greendim);border-color:#00ffaa33;color:var(--green)}
+.btn-red{background:var(--reddim);border-color:#ff446633;color:var(--red)}
+
+/* Layout */
+.layout{display:grid;grid-template-columns:220px 1fr;flex:1;overflow:hidden}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.main{overflow-y:auto;background:var(--bg)}
+
+/* Sidebar */
+.nav-section{padding:16px 14px 4px;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;font-family:'Syne',sans-serif}
+.nav-item{padding:8px 14px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text2);cursor:pointer;transition:.1s;border-left:2px solid transparent;user-select:none}
+.nav-item:hover{color:var(--text);background:var(--bg3)}
+.nav-item.active{color:var(--blue);background:var(--bluedim);border-left-color:var(--blue)}
+.nav-icon{width:16px;height:16px;flex-shrink:0;opacity:.7}
+.nav-item.active .nav-icon{opacity:1}
+.platform-pill{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;color:var(--text2);cursor:pointer;transition:.1s;border-radius:0}
+.platform-pill:hover{background:var(--bg3)}
+.platform-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.connected-badge{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:3px;background:var(--greendim);color:var(--green);font-weight:600}
+.disconnected-badge{margin-left:auto;font-size:9px;padding:1px 6px;border-radius:3px;background:var(--bg5);color:var(--text3);font-weight:600}
+
+/* Pages */
+.page{display:none;flex-direction:column;gap:16px;padding:20px;min-height:100%}
+.page.active{display:flex}
+
+/* Cards */
+.card{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;overflow:hidden}
+.card-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.card-title{font-size:13px;font-weight:600;font-family:'Syne',sans-serif;color:var(--text)}
+
+/* Stats row */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.stat-card{background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:14px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat-card.blue::before{background:var(--blue)}
+.stat-card.green::before{background:var(--green)}
+.stat-card.purple::before{background:var(--purple)}
+.stat-card.amber::before{background:var(--amber)}
+.stat-val{font-size:26px;font-weight:700;font-family:'Syne',sans-serif;line-height:1}
+.stat-lbl{font-size:11px;color:var(--text3);margin-top:5px}
+.stat-delta{font-size:11px;margin-top:6px;display:flex;align-items:center;gap:3px}
+
+/* Platform grid */
+.platform-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px}
+.platform-card{background:var(--bg4);border:1px solid var(--border2);border-radius:10px;padding:16px;cursor:pointer;transition:.2s;position:relative}
+.platform-card:hover{transform:translateY(-2px);border-color:var(--border3)}
+.platform-card.connected{border-color:var(--green)33}
+.platform-name{font-size:13px;font-weight:600;font-family:'Syne',sans-serif;margin:8px 0 3px}
+.platform-handle{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace}
+.platform-stats{display:flex;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.pstat{font-size:11px;color:var(--text3)}
+.pstat strong{color:var(--text);font-size:13px;display:block}
+.connect-btn{width:100%;margin-top:12px;justify-content:center}
+.status-dot{width:8px;height:8px;border-radius:50%;position:absolute;top:12px;right:12px}
+.status-dot.on{background:var(--green);box-shadow:0 0 6px var(--green)66}
+.status-dot.off{background:var(--text3)}
+
+/* Post composer */
+.composer{background:var(--bg2);border:1px solid var(--border2);border-radius:12px;overflow:hidden}
+.composer-platforms{display:flex;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.plat-toggle{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:.15s;border:1px solid transparent;opacity:.4}
+.plat-toggle.active{opacity:1;border-color:currentColor}
+.composer-body{padding:14px 16px}
+.composer-textarea{width:100%;background:transparent;border:none;color:var(--text);font-size:14px;font-family:'DM Sans',sans-serif;resize:none;outline:none;min-height:120px;line-height:1.6}
+.composer-textarea::placeholder{color:var(--text3)}
+.char-count{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;text-align:right}
+.char-count.warn{color:var(--amber)}
+.char-count.over{color:var(--red)}
+.composer-media{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.media-preview{width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid var(--border3);position:relative}
+.add-media-btn{width:60px;height:60px;border:1px dashed var(--border3);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);font-size:20px;transition:.15s}
+.add-media-btn:hover{border-color:var(--blue);color:var(--blue)}
+.composer-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.composer-tools{display:flex;gap:6px}
+
+/* Hashtag pills */
+.hashtag-wrap{padding:8px 16px;border-top:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;min-height:38px}
+.hashtag{font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bluedim);color:var(--blue);cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.hashtag:hover{background:var(--reddim);color:var(--red)}
+.hashtag-input{background:transparent;border:none;color:var(--text2);font-size:11px;outline:none;font-family:'DM Mono',monospace;width:120px}
+
+/* Posts list */
+.post-item{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:14px;display:flex;gap:14px;align-items:flex-start;transition:.15s}
+.post-item:hover{border-color:var(--border3)}
+.post-platforms{display:flex;gap:4px;flex-shrink:0}
+.plat-icon{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.post-content{flex:1;min-width:0}
+.post-text{font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px}
+.post-meta{display:flex;gap:10px;font-size:11px;color:var(--text3)}
+.post-status{font-size:10px;padding:2px 8px;border-radius:4px;font-weight:600}
+.status-draft{background:var(--bg5);color:var(--text3)}
+.status-scheduled{background:var(--amberdim);color:var(--amber)}
+.status-publishing{background:var(--bluedim);color:var(--blue)}
+.status-published{background:var(--greendim);color:var(--green)}
+.status-failed{background:var(--reddim);color:var(--red)}
+.post-actions{display:flex;gap:6px;flex-shrink:0}
+
+/* Analytics */
+.analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.chart-wrap{position:relative;height:160px}
+canvas{display:block}
+.analytics-bar{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:4px}
+.analytics-bar-fill{height:100%;border-radius:3px;transition:.5s}
+
+/* Scheduler calendar */
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:14px}
+.cal-day{background:var(--bg4);border-radius:6px;padding:6px;min-height:70px;font-size:10px;color:var(--text3)}
+.cal-day.today{border:1px solid var(--blue)55}
+.cal-day-num{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px}
+.cal-post{font-size:9px;padding:2px 5px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+
+/* Notifications */
+.notif{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px}
+.notif-icon{font-size:14px;flex-shrink:0;margin-top:1px}
+.notif-msg{color:var(--text2);flex:1}
+.notif-time{color:var(--text3);font-family:'DM Mono',monospace;font-size:10px;flex-shrink:0}
+
+/* AI generator */
+.ai-box{background:linear-gradient(135deg,var(--bg3),#1a1a35);border:1px solid var(--purple)33;border-radius:12px;padding:16px}
+.ai-result{background:var(--bg4);border-radius:8px;padding:14px;margin-top:12px;font-size:13px;color:var(--text2);line-height:1.6;display:none}
+
+/* Settings form */
+.settings-field{margin-bottom:16px}
+.settings-label{font-size:12px;color:var(--text3);margin-bottom:6px;display:block;font-weight:500}
+.settings-input{width:100%;background:var(--bg4);border:1px solid var(--border2);color:var(--text);padding:9px 12px;border-radius:7px;font-size:13px;font-family:'DM Mono',monospace;outline:none;transition:.15s}
+.settings-input:focus{border-color:var(--blue)}
+.settings-input::placeholder{color:var(--text3)}
+.settings-section{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:20px 0 12px;font-family:'Syne',sans-serif}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite;display:inline-block}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">✦</div>
+    OmniPost
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <div class="conn-dot" id="conn-dot"></div>
+    <span class="conn-status" id="conn-status">Connexion…</span>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn" onclick="showPage('notifications')">🔔 <span id="notif-count" style="background:var(--red);color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;display:none">0</span></button>
+    <button class="btn btn-primary" onclick="showPage('compose')">+ Nouveau post</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="nav-section">Dashboard</div>
+    <div class="nav-item active" onclick="showPage('dashboard',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="1" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="9" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="9" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
+      Vue d'ensemble
+    </div>
+    <div class="nav-item" onclick="showPage('compose',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M3 13h10M8 3v7M5 6l3-3 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Composer un post
+    </div>
+    <div class="nav-item" onclick="showPage('posts',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      Mes posts
+    </div>
+    <div class="nav-item" onclick="showPage('calendar',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M5 1v4M11 1v4M1 7h14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      Calendrier
+    </div>
+    <div class="nav-item" onclick="showPage('analytics',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M1 13l4-5 3 3 4-7 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Analytics
+    </div>
+    <div class="nav-item" onclick="showPage('ai',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M3.5 12.5l1.4-1.4M11.1 4.9l1.4-1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      IA Générateur
+    </div>
+
+    <div class="nav-section">Plateformes</div>
+    <div id="platform-nav"></div>
+
+    <div class="nav-section">Paramètres</div>
+    <div class="nav-item" onclick="showPage('settings',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M3.3 12.7l1.4-1.4M11.3 4.7l1.4-1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      Configuration
+    </div>
+    <div class="nav-item" onclick="showPage('connections',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="8" r="2.5" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.2"/><circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 8l3-2.5M6.5 8l3 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      Connexions
+    </div>
+    <div class="nav-item" onclick="showPage('notifications',this)">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2a5 5 0 0 1 5 5v3l1.5 2H1.5L3 10V7a5 5 0 0 1 5-5z" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" stroke-width="1.2"/></svg>
+      Notifications
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- PAGE: DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-row">
+        <div class="stat-card blue">
+          <div class="stat-val" id="d-posts">0</div>
+          <div class="stat-lbl">Posts publiés</div>
+          <div class="stat-delta" style="color:var(--green)">↑ +3 cette semaine</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-val" id="d-scheduled">0</div>
+          <div class="stat-lbl">Posts planifiés</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-val" id="d-impressions">—</div>
+          <div class="stat-lbl">Impressions totales</div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-val" id="d-platforms">0</div>
+          <div class="stat-lbl">Plateformes connectées</div>
+        </div>
+      </div>
+
+      <!-- Platform status row -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Plateformes</span>
+          <button class="btn" onclick="showPage('connections')">Gérer les connexions →</button>
+        </div>
+        <div id="dash-platforms" style="display:flex;gap:0;padding:8px;flex-wrap:wrap"></div>
+      </div>
+
+      <!-- Recent posts + analytics -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Posts récents</span>
+            <button class="btn" onclick="showPage('posts')">Voir tout →</button>
+          </div>
+          <div id="dash-recent-posts" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Engagement 7 jours</span>
+          </div>
+          <div style="padding:14px">
+            <canvas id="engagement-chart" style="width:100%;height:140px;display:block"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: COMPOSE -->
+    <div class="page" id="page-compose">
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
+        <!-- Composer -->
+        <div>
+          <div class="composer">
+            <div class="card-header" style="background:var(--bg3)">
+              <span class="card-title">Nouveau post</span>
+              <div style="display:flex;gap:6px">
+                <button class="btn" onclick="suggestHashtags()">🏷 Hashtags</button>
+                <button class="btn" style="background:var(--bluedim);color:var(--purple);border-color:var(--purple)44" onclick="showPage('ai')">✨ IA</button>
+              </div>
+            </div>
+            <!-- Platform toggles -->
+            <div class="composer-platforms" id="composer-platforms"></div>
+            <!-- Text area -->
+            <div class="composer-body">
+              <textarea class="composer-textarea" id="post-content" placeholder="Quoi de neuf ? Parle de ton produit, partage une astuce, engage ta communauté…" oninput="updateCharCount()"></textarea>
+              <div class="char-count" id="char-count">0 / 280</div>
+            </div>
+            <!-- Hashtags -->
+            <div class="hashtag-wrap" id="hashtag-area">
+              <input class="hashtag-input" id="hashtag-input" placeholder="+ ajouter un hashtag" onkeydown="addHashtag(event)">
+            </div>
+            <!-- Media -->
+            <div class="composer-media">
+              <div id="media-previews"></div>
+              <div class="add-media-btn" onclick="document.getElementById('media-file').click()">+</div>
+              <input type="file" id="media-file" accept="image/*,video/*" multiple style="display:none" onchange="addMedia(this)">
+              <span style="font-size:11px;color:var(--text3)">Images, vidéos</span>
+            </div>
+            <!-- Footer -->
+            <div class="composer-footer">
+              <div class="composer-tools">
+                <button class="btn" onclick="schedulePost()">📅 Planifier</button>
+                <button class="btn" onclick="saveDraft()">💾 Brouillon</button>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-primary" onclick="publishNow()" id="publish-btn">🚀 Publier maintenant</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- YouTube extra fields -->
+          <div id="yt-extras" style="display:none;margin-top:12px">
+            <div class="card">
+              <div class="card-header"><span class="card-title">YouTube — Détails vidéo</span></div>
+              <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+                <input id="yt-title" class="settings-input" placeholder="Titre de la vidéo (requis)">
+                <input id="yt-tags" class="settings-input" placeholder="Tags séparés par virgules">
+              </div>
+            </div>
+          </div>
+
+          <!-- Pinterest extra fields -->
+          <div id="pt-extras" style="display:none;margin-top:12px">
+            <div class="card">
+              <div class="card-header"><span class="card-title">Pinterest — Lien</span></div>
+              <div style="padding:14px">
+                <input id="pt-link" class="settings-input" placeholder="URL de destination (optionnel)">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Preview sidebar -->
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Aperçu</span>
+              <select id="preview-platform" onchange="updatePreview()" style="background:var(--bg4);border:1px solid var(--border2);color:var(--text2);padding:4px 8px;border-radius:5px;font-size:11px">
+                <option value="instagram">Instagram</option>
+                <option value="facebook">Facebook</option>
+                <option value="tiktok">TikTok</option>
+                <option value="twitter">Twitter/X</option>
+              </select>
+            </div>
+            <div style="padding:14px" id="post-preview"></div>
+          </div>
+
+          <!-- Schedule picker -->
+          <div class="card" id="schedule-picker" style="display:none">
+            <div class="card-header"><span class="card-title">📅 Planification</span></div>
+            <div style="padding:14px;display:flex;flex-direction:column;gap:10px">
+              <input type="datetime-local" id="schedule-dt" class="settings-input">
+              <div style="font-size:11px;color:var(--text3)">Meilleurs moments :</div>
+              <div id="best-times" style="display:flex;gap:5px;flex-wrap:wrap"></div>
+              <button class="btn btn-primary" onclick="confirmSchedule()" style="justify-content:center">Confirmer la planification</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: POSTS -->
+    <div class="page" id="page-posts">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Tous les posts</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="posts-filter" onchange="filterPosts()" style="background:var(--bg4);border:1px solid var(--border2);color:var(--text2);padding:5px 8px;border-radius:5px;font-size:11px">
+              <option value="all">Tous</option>
+              <option value="draft">Brouillons</option>
+              <option value="scheduled">Planifiés</option>
+              <option value="published">Publiés</option>
+              <option value="failed">Échoués</option>
+            </select>
+            <select id="posts-platform-filter" onchange="filterPosts()" style="background:var(--bg4);border:1px solid var(--border2);color:var(--text2);padding:5px 8px;border-radius:5px;font-size:11px">
+              <option value="all">Toutes plateformes</option>
+            </select>
+            <span style="font-size:11px;color:var(--text3)" id="posts-count">0 posts</span>
+          </div>
+        </div>
+        <div id="posts-list" style="padding:14px;display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: CALENDAR -->
+    <div class="page" id="page-calendar">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title" id="cal-title">Calendrier</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn" onclick="calPrev()">← Préc</button>
+            <button class="btn" onclick="calToday()">Aujourd'hui</button>
+            <button class="btn" onclick="calNext()">Suiv →</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);padding:10px 14px 4px;gap:4px">
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">LUN</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">MAR</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">MER</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">JEU</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">VEN</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">SAM</div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;font-weight:600">DIM</div>
+        </div>
+        <div class="calendar" id="calendar-grid"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: ANALYTICS -->
+    <div class="page" id="page-analytics">
+      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
+        <span style="font-size:16px;font-weight:700;font-family:'Syne',sans-serif">Analytics</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn" onclick="sendCmd({cmd:'get_analytics',period:'7d'})">7 jours</button>
+          <button class="btn" onclick="sendCmd({cmd:'get_analytics',period:'30d'})">30 jours</button>
+          <button class="btn" onclick="sendCmd({cmd:'get_analytics',period:'90d'})">90 jours</button>
+          <button class="btn btn-green" onclick="sendCmd({cmd:'load_demo_analytics'})">📊 Données démo</button>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card blue"><div class="stat-val" id="a-impressions">—</div><div class="stat-lbl">Impressions</div></div>
+        <div class="stat-card green"><div class="stat-val" id="a-reach">—</div><div class="stat-lbl">Portée</div></div>
+        <div class="stat-card purple"><div class="stat-val" id="a-likes">—</div><div class="stat-lbl">Likes</div></div>
+        <div class="stat-card amber"><div class="stat-val" id="a-comments">—</div><div class="stat-lbl">Commentaires</div></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Impressions par plateforme</span></div>
+          <div style="padding:14px" id="platform-analytics"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Évolution sur la période</span></div>
+          <div style="padding:14px;height:180px;position:relative">
+            <canvas id="analytics-trend-chart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: AI GENERATOR -->
+    <div class="page" id="page-ai">
+      <div class="ai-box">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <span style="font-size:20px">✨</span>
+          <div>
+            <div style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">Générateur de contenu IA</div>
+            <div style="font-size:12px;color:var(--text3)">Propulsé par Claude (Anthropic)</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+          <div>
+            <div class="settings-label">Plateforme cible</div>
+            <select id="ai-platform" class="settings-input" style="font-family:'DM Sans',sans-serif">
+              <option value="instagram">📸 Instagram</option>
+              <option value="facebook">📘 Facebook</option>
+              <option value="tiktok">🎵 TikTok</option>
+              <option value="youtube">▶️ YouTube</option>
+              <option value="pinterest">📌 Pinterest</option>
+              <option value="twitter">🐦 Twitter/X</option>
+            </select>
+          </div>
+          <div>
+            <div class="settings-label">Ton</div>
+            <select id="ai-tone" class="settings-input" style="font-family:'DM Sans',sans-serif">
+              <option value="engaging">Engageant</option>
+              <option value="professional">Professionnel</option>
+              <option value="humorous">Humoristique</option>
+              <option value="inspirational">Inspirant</option>
+              <option value="informative">Informatif</option>
+              <option value="promotional">Promotionnel</option>
+            </select>
+          </div>
+          <div>
+            <div class="settings-label">Langue</div>
+            <select id="ai-lang" class="settings-input" style="font-family:'DM Sans',sans-serif">
+              <option value="fr">🇫🇷 Français</option>
+              <option value="en">🇬🇧 English</option>
+              <option value="es">🇪🇸 Español</option>
+            </select>
+          </div>
+        </div>
+        <textarea id="ai-prompt" class="settings-input" placeholder="Décris ton post : ex: 'Promotion -20% sur ma boutique de vêtements, ciblant les femmes 25-35 ans'" style="height:80px;resize:vertical;font-family:'DM Sans',sans-serif"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-primary" onclick="generateAI()" id="ai-gen-btn" style="padding:10px 20px">✨ Générer</button>
+          <button class="btn" onclick="generateAI(); generateAI(); generateAI()">× 3 variations</button>
+        </div>
+        <div id="ai-results" style="display:flex;flex-direction:column;gap:10px;margin-top:10px"></div>
+      </div>
+
+      <!-- Templates library -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">📚 Bibliothèque de templates</span></div>
+        <div style="padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px" id="templates-grid"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: CONNECTIONS -->
+    <div class="page" id="page-connections">
+      <div style="font-size:16px;font-weight:700;font-family:'Syne',sans-serif;margin-bottom:4px">Connexions aux plateformes</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:16px">Configure les API keys pour activer la publication automatique sur chaque plateforme.</div>
+      <div id="connections-grid" class="platform-grid"></div>
+    </div>
+
+    <!-- PAGE: SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="card">
+        <div class="card-header"><span class="card-title">⚙️ Paramètres généraux</span></div>
+        <div style="padding:20px;max-width:600px">
+          <div class="settings-section">Intelligence artificielle</div>
+          <div class="settings-field">
+            <label class="settings-label">Clé API Anthropic (Claude)</label>
+            <input id="s-api-key" type="password" class="settings-input" placeholder="sk-ant-…">
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Obtiens ta clé sur <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">console.anthropic.com</a></div>
+          </div>
+
+          <div class="settings-section">Fuseau horaire & publication</div>
+          <div class="settings-field">
+            <label class="settings-label">Fuseau horaire</label>
+            <select id="s-timezone" class="settings-input" style="font-family:'DM Sans',sans-serif">
+              <option value="America/Toronto">Montréal / Toronto (EST)</option>
+              <option value="America/New_York">New York (EST)</option>
+              <option value="America/Los_Angeles">Los Angeles (PST)</option>
+              <option value="Europe/Paris">Paris (CET)</option>
+              <option value="Europe/London">Londres (GMT)</option>
+            </select>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label">Filigrane sur les images</label>
+            <input id="s-watermark" class="settings-input" placeholder="ex: @moncompte">
+          </div>
+
+          <div class="settings-section">Hashtags par défaut</div>
+          <div id="default-hashtags-settings"></div>
+
+          <button class="btn btn-primary" onclick="saveSettings()" style="padding:10px 24px;margin-top:8px">💾 Sauvegarder</button>
+          <span id="settings-saved-msg" style="font-size:12px;color:var(--green);margin-left:12px;display:none">✓ Sauvegardé !</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: NOTIFICATIONS -->
+    <div class="page" id="page-notifications">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Notifications</span>
+          <button class="btn btn-red" onclick="clearNotifications()">Effacer tout</button>
+        </div>
+        <div id="notifications-list" style="padding:12px 16px"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const WS_URL = 'ws://localhost:8860';
+let ws, state = {};
+const PLAT_COLORS = {facebook:'#1877f2',instagram:'#e1306c',tiktok:'#ff0050',youtube:'#ff0000',pinterest:'#e60023',twitter:'#1da1f2',linkedin:'#0077b5'};
+const PLAT_ICONS  = {facebook:'📘',instagram:'📸',tiktok:'🎵',youtube:'▶️',pinterest:'📌',twitter:'🐦',linkedin:'💼'};
+let selectedPlatforms = ['instagram','facebook'];
+let currentHashtags = [];
+let currentMedia = [];
+let scheduleDt = '';
+let calOffset = 0;
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    document.getElementById('conn-dot').className = 'conn-dot ok';
+    document.getElementById('conn-status').textContent = 'Connecté';
+    sendCmd({cmd:'get_state'});
+  };
+  ws.onclose = () => {
+    document.getElementById('conn-dot').className = 'conn-dot';
+    document.getElementById('conn-status').textContent = 'Reconnexion…';
+    setTimeout(connect, 3000);
+  };
+  ws.onmessage = e => {
+    try { handleMsg(JSON.parse(e.data)); } catch(ex) {}
+  };
+}
+
+function sendCmd(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function handleMsg(msg) {
+  if (msg.type === 'state') {
+    state = msg;
+    renderAll(msg);
+  } else if (msg.type === 'post_created' || msg.type === 'post_updated' || msg.type === 'post_deleted') {
+    sendCmd({cmd:'get_state'});
+    showToast('✓ Post ' + (msg.type === 'post_created' ? 'créé' : msg.type === 'post_deleted' ? 'supprimé' : 'mis à jour'), 'var(--green)');
+  } else if (msg.type === 'post_published') {
+    sendCmd({cmd:'get_state'});
+    showToast('🚀 Publié !', 'var(--green)');
+  } else if (msg.type === 'post_status') {
+    showToast('⏳ Publication en cours…', 'var(--blue)');
+  } else if (msg.type === 'oauth_url') {
+    window.open(msg.url, 'oauth', 'width=600,height=700');
+  } else if (msg.type === 'oauth_error') {
+    showToast('⚠ ' + msg.error, 'var(--amber)');
+  } else if (msg.type === 'platform_connected') {
+    sendCmd({cmd:'get_state'});
+    showToast('✅ ' + msg.platform + ' connecté !', 'var(--green)');
+  } else if (msg.type === 'platform_disconnected') {
+    sendCmd({cmd:'get_state'});
+  } else if (msg.type === 'ai_generating') {
+    document.getElementById('ai-gen-btn').textContent = '⏳ Génération…';
+    document.getElementById('ai-gen-btn').disabled = true;
+  } else if (msg.type === 'ai_content') {
+    renderAIResult(msg.result, msg.platform);
+    document.getElementById('ai-gen-btn').textContent = '✨ Générer';
+    document.getElementById('ai-gen-btn').disabled = false;
+  } else if (msg.type === 'analytics_data') {
+    renderAnalyticsData(msg.data);
+  } else if (msg.type === 'analytics_loaded') {
+    sendCmd({cmd:'get_analytics', period:'30d'});
+    showToast('📊 Données démo chargées', 'var(--green)');
+  } else if (msg.type === 'settings_saved') {
+    const el = document.getElementById('settings-saved-msg');
+    if (el) { el.style.display='inline'; setTimeout(()=>el.style.display='none',2000); }
+  } else if (msg.type === 'oauth_saved') {
+    showToast('✓ Clés API sauvegardées pour ' + msg.platform, 'var(--green)');
+  } else if (msg.type === 'best_times') {
+    renderBestTimes(msg.times);
+  } else if (msg.type === 'hashtag_suggestions') {
+    renderHashtagSuggestions(msg.hashtags);
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderAll(s) {
+  // Stats
+  const connectedCount = Object.values(s.accounts||{}).filter(a=>a.connected).length;
+  document.getElementById('d-posts').textContent      = (s.published_count||0).toLocaleString();
+  document.getElementById('d-scheduled').textContent  = (s.scheduled_count||0).toLocaleString();
+  document.getElementById('d-platforms').textContent  = connectedCount;
+  document.getElementById('d-impressions').textContent = (s.analytics?.total_impressions||0).toLocaleString();
+
+  // Analytics stats
+  if (s.analytics) {
+    document.getElementById('a-impressions').textContent = (s.analytics.total_impressions||0).toLocaleString();
+    document.getElementById('a-reach').textContent       = (s.analytics.total_reach||0).toLocaleString();
+    document.getElementById('a-likes').textContent       = (s.analytics.total_likes||0).toLocaleString();
+    document.getElementById('a-comments').textContent    = (s.analytics.total_comments||0).toLocaleString();
+  }
+
+  renderPlatformNav(s.accounts||{});
+  renderDashPlatforms(s.accounts||{});
+  renderConnectionsGrid(s.accounts||{}, s.platforms||{});
+  renderComposerPlatforms(s.platforms||{});
+  renderRecentPosts(s.posts||[]);
+  renderPostsList(s.posts||[]);
+  renderCalendar(s.posts||[]);
+  renderNotifications(s.notifications||[]);
+  renderPlatformAnalytics(s.analytics?.by_platform||{});
+  updatePostsFilter();
+  updatePreview();
+  renderEngagementChart(s.analytics?.by_platform||{});
+}
+
+function renderPlatformNav(accounts) {
+  const el = document.getElementById('platform-nav');
+  const plats = ['facebook','instagram','tiktok','youtube','pinterest','twitter'];
+  el.innerHTML = plats.map(p => {
+    const acc = accounts[p];
+    const conn = acc && acc.connected;
+    return `<div class="platform-pill" onclick="showPage('connections')">
+      <div class="platform-dot" style="background:${PLAT_COLORS[p]}"></div>
+      <span style="flex:1;font-size:12px;color:var(--text2)">${PLAT_ICONS[p]} ${p.charAt(0).toUpperCase()+p.slice(1)}</span>
+      <span class="${conn?'connected-badge':'disconnected-badge'}">${conn?'ON':'OFF'}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderDashPlatforms(accounts) {
+  const el = document.getElementById('dash-platforms');
+  if (!el) return;
+  const plats = ['facebook','instagram','tiktok','youtube','pinterest','twitter'];
+  el.innerHTML = plats.map(p => {
+    const acc = accounts[p] || {};
+    const conn = acc.connected;
+    return `<div style="flex:1;min-width:100px;padding:12px;text-align:center;border-right:1px solid var(--border)">
+      <div style="font-size:20px;margin-bottom:4px">${PLAT_ICONS[p]}</div>
+      <div style="font-size:11px;font-weight:600;color:${conn?'var(--text)':'var(--text3)'}">${p.charAt(0).toUpperCase()+p.slice(1)}</div>
+      <div style="font-size:9px;padding:2px 6px;border-radius:3px;display:inline-block;margin-top:4px;${conn?'background:var(--greendim);color:var(--green)':'background:var(--bg4);color:var(--text3)'}">${conn?'Connecté':'Non connecté'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderConnectionsGrid(accounts, platforms) {
+  const el = document.getElementById('connections-grid');
+  if (!el) return;
+  const allPlats = ['facebook','instagram','tiktok','youtube','pinterest','twitter'];
+  el.innerHTML = allPlats.map(p => {
+    const acc = accounts[p] || {};
+    const conn = acc.connected;
+    const info = platforms[p] || {};
+    return `<div class="platform-card ${conn?'connected':''}">
+      <div class="status-dot ${conn?'on':'off'}"></div>
+      <div style="font-size:28px;margin-bottom:6px">${PLAT_ICONS[p]}</div>
+      <div class="platform-name" style="color:${PLAT_COLORS[p]}">${info.name||p}</div>
+      <div class="platform-handle">${conn && acc.handle ? '@'+acc.handle : 'Non connecté'}</div>
+      ${conn ? `
+        <div class="platform-stats">
+          <div class="pstat"><strong>${(acc.followers||0).toLocaleString()}</strong>Abonnés</div>
+          <div class="pstat"><strong>${(acc.posts_count||0).toLocaleString()}</strong>Posts</div>
+        </div>` : ''}
+      <!-- OAuth config -->
+      <div id="oauth-${p}" style="margin-top:10px;display:none">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Clés API</div>
+        <div id="oauth-fields-${p}"></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn ${conn?'btn-red':'btn-green'} connect-btn" onclick="${conn?`disconnectPlatform('${p}')`:`connectPlatform('${p}')`}">
+          ${conn ? '✕ Déconnecter' : '→ Connecter'}
+        </button>
+        <button class="btn" onclick="toggleOAuthConfig('${p}')" title="Configuration">⚙</button>
+      </div>
+    </div>`;
+  }).join('');
+  renderOAuthFields(accounts);
+}
+
+function renderOAuthFields(accounts) {
+  const configs = {
+    facebook:  [{k:'app_id',l:'App ID'},{k:'app_secret',l:'App Secret',t:'password'}],
+    instagram: [{k:'app_id',l:'App ID'},{k:'app_secret',l:'App Secret',t:'password'}],
+    tiktok:    [{k:'client_key',l:'Client Key'},{k:'client_secret',l:'Client Secret',t:'password'}],
+    youtube:   [{k:'client_id',l:'Client ID'},{k:'client_secret',l:'Client Secret',t:'password'}],
+    pinterest: [{k:'app_id',l:'App ID'},{k:'app_secret',l:'App Secret',t:'password'}],
+    twitter:   [{k:'api_key',l:'API Key'},{k:'api_secret',l:'API Secret',t:'password'},{k:'bearer_token',l:'Bearer Token',t:'password'}],
+  };
+  Object.entries(configs).forEach(([p, fields]) => {
+    const el = document.getElementById('oauth-fields-'+p);
+    if (!el) return;
+    el.innerHTML = fields.map(f => `
+      <div style="margin-bottom:6px">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:2px">${f.l}</div>
+        <input type="${f.t||'text'}" id="oauth-${p}-${f.k}" class="settings-input" style="font-size:11px;padding:5px 8px" placeholder="${f.l}">
+      </div>`).join('') +
+      `<button class="btn btn-green" onclick="saveOAuth('${p}')" style="width:100%;justify-content:center;font-size:11px;padding:5px">Sauvegarder</button>`;
+  });
+}
+
+function toggleOAuthConfig(p) {
+  const el = document.getElementById('oauth-'+p);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveOAuth(p) {
+  const fields = {
+    facebook: ['app_id','app_secret'], instagram: ['app_id','app_secret'],
+    tiktok: ['client_key','client_secret'], youtube: ['client_id','client_secret'],
+    pinterest: ['app_id','app_secret'], twitter: ['api_key','api_secret','bearer_token'],
+  };
+  const keys = {};
+  (fields[p]||[]).forEach(k => {
+    const el = document.getElementById(`oauth-${p}-${k}`);
+    if (el && el.value) keys[k] = el.value;
+  });
+  sendCmd({cmd:'save_oauth', platform:p, keys});
+}
+
+function connectPlatform(p) {
+  sendCmd({cmd:'connect_platform', platform:p});
+}
+function disconnectPlatform(p) {
+  if (confirm('Déconnecter ' + p + ' ?')) sendCmd({cmd:'disconnect_platform', platform:p});
+}
+
+function renderComposerPlatforms(platforms) {
+  const el = document.getElementById('composer-platforms');
+  if (!el) return;
+  el.innerHTML = Object.entries(platforms).map(([p, info]) => `
+    <div class="plat-toggle ${selectedPlatforms.includes(p)?'active':''}" 
+         style="color:${PLAT_COLORS[p]};border-color:${selectedPlatforms.includes(p)?PLAT_COLORS[p]:'transparent'}"
+         onclick="togglePlatform('${p}')">
+      ${info.icon} ${info.name}
+    </div>`).join('');
+  updateYTExtras();
+}
+
+function togglePlatform(p) {
+  const idx = selectedPlatforms.indexOf(p);
+  if (idx >= 0) selectedPlatforms.splice(idx, 1);
+  else selectedPlatforms.push(p);
+  renderComposerPlatforms(state.platforms||{});
+  updateCharCount();
+  updatePreview();
+}
+
+function updateCharCount() {
+  const content = document.getElementById('post-content')?.value || '';
+  const platform = selectedPlatforms[0] || 'twitter';
+  const maxChars = {instagram:2200,facebook:63206,tiktok:2200,youtube:5000,pinterest:500,twitter:280,linkedin:3000};
+  const max = maxChars[platform] || 280;
+  const el = document.getElementById('char-count');
+  if (el) {
+    el.textContent = `${content.length} / ${max}`;
+    el.className = 'char-count' + (content.length > max ? ' over' : content.length > max*.8 ? ' warn' : '');
+  }
+  updatePreview();
+  updateYTExtras();
+}
+
+function updateYTExtras() {
+  const yt = document.getElementById('yt-extras');
+  const pt = document.getElementById('pt-extras');
+  if (yt) yt.style.display = selectedPlatforms.includes('youtube') ? 'block' : 'none';
+  if (pt) pt.style.display = selectedPlatforms.includes('pinterest') ? 'block' : 'none';
+}
+
+function updatePreview() {
+  const el = document.getElementById('post-preview');
+  if (!el) return;
+  const platform = document.getElementById('preview-platform')?.value || 'instagram';
+  const content  = document.getElementById('post-content')?.value || '';
+  const tags = currentHashtags.map(h => `<span style="color:${PLAT_COLORS[platform]}">${h}</span>`).join(' ');
+  const mediaHtml = currentMedia.length ? `<div style="background:var(--bg4);border-radius:8px;height:120px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px">🖼 ${currentMedia.length} media</div>` : '';
+  
+  const previews = {
+    instagram: `<div style="border:1px solid var(--border3);border-radius:10px;overflow:hidden;font-size:12px">
+      <div style="background:var(--bg4);padding:8px 10px;display:flex;align-items:center;gap:8px">
+        <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)"></div>
+        <span style="font-weight:600;font-size:11px">votre_compte</span>
+      </div>
+      ${mediaHtml}
+      <div style="padding:10px;background:var(--bg3)">
+        <span style="color:var(--text2)">${content || 'Votre texte ici…'}</span>
+        <br><span>${tags}</span>
+      </div>
+    </div>`,
+    twitter: `<div style="border:1px solid var(--border3);border-radius:12px;padding:14px;font-size:13px;background:var(--bg3)">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--bg4);flex-shrink:0"></div>
+        <div><div style="font-weight:600;font-size:12px">Votre nom <span style="color:var(--text3)">@votre_compte</span></div></div>
+      </div>
+      <div style="color:var(--text2)">${(content||'Votre tweet ici…').slice(0,280)}</div>
+      <div style="color:var(--tw);margin-top:6px;font-size:11px">${tags}</div>
+    </div>`,
+    facebook: `<div style="border:1px solid var(--border3);border-radius:8px;padding:14px;font-size:13px;background:var(--bg3)">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--fb);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">V</div>
+        <div><div style="font-weight:600;font-size:12px">Votre Page</div><div style="font-size:10px;color:var(--text3)">À l'instant · 🌍</div></div>
+      </div>
+      ${mediaHtml}
+      <div style="color:var(--text2)">${content||'Votre post ici…'}</div>
+    </div>`,
+  };
+  el.innerHTML = previews[platform] || previews.instagram;
+}
+
+// ── Post actions ───────────────────────────────────────────────────────────
+function getPostData() {
+  return {
+    platforms: selectedPlatforms,
+    content:   document.getElementById('post-content')?.value || '',
+    hashtags:  currentHashtags,
+    media:     currentMedia,
+    scheduled: scheduleDt,
+    title:     document.getElementById('yt-title')?.value || '',
+    link:      document.getElementById('pt-link')?.value || '',
+  };
+}
+
+function publishNow() {
+  const data = getPostData();
+  if (!data.content.trim()) { showToast('Écris quelque chose !', 'var(--amber)'); return; }
+  if (!data.platforms.length) { showToast('Sélectionne au moins une plateforme', 'var(--amber)'); return; }
+  sendCmd({cmd:'create_post', ...data, scheduled: ''});
+  setTimeout(() => {
+    const lastPost = state.posts?.[0];
+    if (lastPost) sendCmd({cmd:'publish_now', id: lastPost.id});
+  }, 500);
+  clearComposer();
+}
+
+function saveDraft() {
+  const data = getPostData();
+  if (!data.content.trim()) { showToast('Écris quelque chose !', 'var(--amber)'); return; }
+  sendCmd({cmd:'create_post', ...data, scheduled: ''});
+  clearComposer();
+}
+
+function schedulePost() {
+  const el = document.getElementById('schedule-picker');
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  // Load best times for first selected platform
+  if (selectedPlatforms[0]) sendCmd({cmd:'get_best_times', platform: selectedPlatforms[0]});
+}
+
+function confirmSchedule() {
+  const dt = document.getElementById('schedule-dt')?.value;
+  if (!dt) { showToast('Sélectionne une date/heure', 'var(--amber)'); return; }
+  scheduleDt = dt;
+  const data = getPostData();
+  if (!data.content.trim()) { showToast('Écris quelque chose !', 'var(--amber)'); return; }
+  sendCmd({cmd:'create_post', ...data});
+  clearComposer();
+  showToast('📅 Post planifié pour le ' + new Date(dt).toLocaleString('fr'), 'var(--green)');
+}
+
+function renderBestTimes(times) {
+  const el = document.getElementById('best-times');
+  if (!el) return;
+  el.innerHTML = times.map(t => `
+    <button class="btn" style="padding:4px 10px;font-size:11px" onclick="document.getElementById('schedule-dt').value='${getBestTimeISO(t)}'">
+      ${t}
+    </button>`).join('');
+}
+
+function getBestTimeISO(time) {
+  const now = new Date();
+  const [h, m] = time.split(':');
+  now.setHours(parseInt(h), parseInt(m), 0, 0);
+  if (now <= new Date()) now.setDate(now.getDate() + 1);
+  return now.toISOString().slice(0,16);
+}
+
+function clearComposer() {
+  document.getElementById('post-content').value = '';
+  currentHashtags = [];
+  currentMedia = [];
+  scheduleDt = '';
+  document.getElementById('hashtag-area').innerHTML = '<input class="hashtag-input" id="hashtag-input" placeholder="+ ajouter un hashtag" onkeydown="addHashtag(event)">';
+  document.getElementById('media-previews').innerHTML = '';
+  document.getElementById('schedule-picker').style.display = 'none';
+  updateCharCount();
+}
+
+// ── Hashtags ───────────────────────────────────────────────────────────────
+function addHashtag(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const input = document.getElementById('hashtag-input');
+  let tag = input.value.trim().replace(/\s+/g,'');
+  if (!tag) return;
+  if (!tag.startsWith('#')) tag = '#' + tag;
+  if (!currentHashtags.includes(tag)) {
+    currentHashtags.push(tag);
+    renderHashtags();
+  }
+  input.value = '';
+}
+
+function renderHashtags() {
+  const area = document.getElementById('hashtag-area');
+  const input = area.querySelector('.hashtag-input');
+  area.querySelectorAll('.hashtag').forEach(h => h.remove());
+  currentHashtags.forEach(tag => {
+    const el = document.createElement('span');
+    el.className = 'hashtag';
+    el.innerHTML = tag + ' ✕';
+    el.onclick = () => { currentHashtags = currentHashtags.filter(t=>t!==tag); renderHashtags(); };
+    area.insertBefore(el, input);
+  });
+}
+
+function suggestHashtags() {
+  const content = document.getElementById('post-content')?.value || '';
+  const platform = selectedPlatforms[0] || 'instagram';
+  sendCmd({cmd:'suggest_hashtags', topic: content, platform});
+}
+
+function renderHashtagSuggestions(hashtags) {
+  // Show suggestions as clickable pills
+  const area = document.getElementById('hashtag-area');
+  const existing = area.querySelector('#hashtag-suggestions');
+  if (existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'hashtag-suggestions';
+  div.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;padding-top:6px;border-top:1px solid var(--border);width:100%';
+  div.innerHTML = '<span style="font-size:10px;color:var(--text3);align-self:center">Suggestions:</span>' +
+    hashtags.map(h => `<span style="font-size:10px;padding:2px 8px;border-radius:20px;background:var(--bg5);color:var(--text2);cursor:pointer" onclick="addSuggestedTag('${h}')">${h}</span>`).join('');
+  area.appendChild(div);
+}
+
+function addSuggestedTag(tag) {
+  if (!currentHashtags.includes(tag)) { currentHashtags.push(tag); renderHashtags(); }
+}
+
+// ── Media ──────────────────────────────────────────────────────────────────
+function addMedia(input) {
+  const previews = document.getElementById('media-previews');
+  Array.from(input.files).forEach(file => {
+    const url = URL.createObjectURL(file);
+    currentMedia.push(url);
+    const img = document.createElement('img');
+    img.src = url; img.className = 'media-preview';
+    img.style.cssText = 'width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid var(--border3)';
+    previews.appendChild(img);
+  });
+}
+
+// ── Posts rendering ────────────────────────────────────────────────────────
+function renderRecentPosts(posts) {
+  const el = document.getElementById('dash-recent-posts');
+  if (!el) return;
+  el.innerHTML = posts.slice(0,5).map(p => renderPostItem(p)).join('') ||
+    '<div style="font-size:12px;color:var(--text3);padding:8px">Aucun post créé</div>';
+}
+
+function renderPostItem(p) {
+  const icons = (p.platforms||[]).map(pl => `<div class="plat-icon" style="background:${PLAT_COLORS[pl]}22">${PLAT_ICONS[pl]||'🌐'}</div>`).join('');
+  const statusClass = `status-${p.status||'draft'}`;
+  const scheduled = p.scheduled ? new Date(p.scheduled).toLocaleString('fr',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  return `<div class="post-item">
+    <div class="post-platforms">${icons}</div>
+    <div class="post-content">
+      <div class="post-text">${p.content||'(Pas de texte)'}</div>
+      <div class="post-meta">
+        <span class="post-status ${statusClass}">${p.status||'draft'}</span>
+        ${scheduled ? `<span>📅 ${scheduled}</span>` : ''}
+        <span>${(p.created_at||'').slice(0,10)}</span>
+      </div>
+    </div>
+    <div class="post-actions">
+      ${p.status === 'draft' || p.status === 'scheduled' ? `<button class="btn btn-green" style="padding:3px 8px;font-size:10px" onclick="publishPostNow('${p.id}')">🚀 Publier</button>` : ''}
+      <button class="btn btn-red" style="padding:3px 8px;font-size:10px" onclick="deletePost('${p.id}')">✕</button>
+    </div>
+  </div>`;
+}
+
+function renderPostsList(posts) {
+  const el = document.getElementById('posts-list');
+  const count = document.getElementById('posts-count');
+  if (!el) return;
+  const filter  = document.getElementById('posts-filter')?.value || 'all';
+  const platFilter = document.getElementById('posts-platform-filter')?.value || 'all';
+  const filtered = posts.filter(p => {
+    if (filter !== 'all' && p.status !== filter) return false;
+    if (platFilter !== 'all' && !(p.platforms||[]).includes(platFilter)) return false;
+    return true;
+  });
+  if (count) count.textContent = filtered.length + ' post' + (filtered.length!==1?'s':'');
+  el.innerHTML = filtered.map(p => renderPostItem(p)).join('') ||
+    '<div style="font-size:12px;color:var(--text3);text-align:center;padding:20px">Aucun post</div>';
+}
+
+function updatePostsFilter() {
+  renderPostsList(state.posts||[]);
+}
+
+function filterPosts() { updatePostsFilter(); }
+
+function publishPostNow(id) {
+  sendCmd({cmd:'publish_now', id});
+}
+
+function deletePost(id) {
+  if (confirm('Supprimer ce post ?')) sendCmd({cmd:'delete_post', id});
+}
+
+function updatePlatformFilter() {
+  const sel = document.getElementById('posts-platform-filter');
+  if (!sel) return;
+  const plats = [...new Set((state.posts||[]).flatMap(p => p.platforms||[]))];
+  sel.innerHTML = '<option value="all">Toutes plateformes</option>' +
+    plats.map(p => `<option value="${p}">${PLAT_ICONS[p]||''} ${p}</option>`).join('');
+}
+
+// ── Calendar ───────────────────────────────────────────────────────────────
+function renderCalendar(posts) {
+  const el = document.getElementById('calendar-grid');
+  const title = document.getElementById('cal-title');
+  if (!el) return;
+
+  const now = new Date();
+  now.setMonth(now.getMonth() + calOffset);
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  if (title) title.textContent = now.toLocaleDateString('fr',{month:'long',year:'numeric'});
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay  = new Date(year, month+1, 0);
+  let startDay   = firstDay.getDay(); // 0=Sun
+  startDay       = startDay === 0 ? 6 : startDay - 1; // Monday=0
+
+  const cells = [];
+  for (let i = 0; i < startDay; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(d);
+
+  const today = new Date().getDate();
+  const todayMonth = new Date().getMonth();
+  const todayYear  = new Date().getFullYear();
+
+  el.innerHTML = cells.map(d => {
+    if (!d) return '<div style="background:transparent"></div>';
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isToday = d===today && month===todayMonth && year===todayYear;
+    const dayPosts = posts.filter(p => (p.scheduled||'').startsWith(dateStr));
+    return `<div class="cal-day ${isToday?'today':''}">
+      <div class="cal-day-num" style="${isToday?'color:var(--blue);font-weight:700':''}">${d}</div>
+      ${dayPosts.slice(0,3).map(p => `<div class="cal-post" style="background:${PLAT_COLORS[p.platforms?.[0]]||'var(--bg5)'}33;color:${PLAT_COLORS[p.platforms?.[0]]||'var(--text3)'}" title="${p.content||''}">${PLAT_ICONS[p.platforms?.[0]]||'📝'} ${(p.content||'').slice(0,12)}</div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function calPrev() { calOffset--; renderCalendar(state.posts||[]); }
+function calNext() { calOffset++; renderCalendar(state.posts||[]); }
+function calToday(){ calOffset=0;  renderCalendar(state.posts||[]); }
+
+// ── Analytics rendering ────────────────────────────────────────────────────
+function renderAnalyticsData(data) {
+  if (!data || !data.length) return;
+  // Aggregate by platform
+  const byPlat = {};
+  data.forEach(a => {
+    if (!byPlat[a.platform]) byPlat[a.platform] = {impressions:0,likes:0,comments:0,shares:0};
+    byPlat[a.platform].impressions += a.impressions||0;
+    byPlat[a.platform].likes       += a.likes||0;
+    byPlat[a.platform].comments    += a.comments||0;
+    byPlat[a.platform].shares      += a.shares||0;
+  });
+  renderPlatformAnalytics(byPlat);
+  document.getElementById('a-impressions').textContent = Object.values(byPlat).reduce((s,v)=>s+v.impressions,0).toLocaleString();
+  document.getElementById('a-likes').textContent       = Object.values(byPlat).reduce((s,v)=>s+v.likes,0).toLocaleString();
+  document.getElementById('a-comments').textContent    = Object.values(byPlat).reduce((s,v)=>s+v.comments,0).toLocaleString();
+}
+
+function renderPlatformAnalytics(byPlat) {
+  const el = document.getElementById('platform-analytics');
+  if (!el || !byPlat) return;
+  const entries = Object.entries(byPlat).sort((a,b)=>b[1].impressions-a[1].impressions);
+  const max = entries.length ? entries[0][1].impressions : 1;
+  el.innerHTML = entries.map(([p, d]) => `
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span>${PLAT_ICONS[p]||''} ${p}</span>
+        <span style="font-family:'DM Mono',monospace;color:${PLAT_COLORS[p]||'var(--text2)'}">${d.impressions.toLocaleString()}</span>
+      </div>
+      <div class="analytics-bar">
+        <div class="analytics-bar-fill" style="width:${Math.round(d.impressions*100/max)}%;background:${PLAT_COLORS[p]||'var(--blue)'}"></div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:4px;font-size:10px;color:var(--text3)">
+        <span>❤️ ${d.likes}</span><span>💬 ${d.comments}</span><span>🔁 ${d.shares}</span>
+      </div>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--text3)">Charge les données démo →</div>';
+}
+
+function renderEngagementChart(byPlat) {
+  const canvas = document.getElementById('engagement-chart');
+  if (!canvas || !Object.keys(byPlat).length) return;
+  canvas.width = canvas.offsetWidth; canvas.height = 140;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const entries = Object.entries(byPlat).slice(0,6);
+  const max = Math.max(...entries.map(([,d])=>d.impressions), 1);
+  const bw = (W-20) / Math.max(entries.length,1);
+  entries.forEach(([p,d],i) => {
+    const h = (d.impressions/max)*(H-20);
+    const x = 10 + i*bw + bw*.1;
+    const w = bw*.8;
+    ctx.fillStyle = PLAT_COLORS[p] || '#5b8fff';
+    ctx.beginPath();
+    ctx.roundRect(x, H-h, w, h, 4);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff44';
+    ctx.font = '10px DM Sans';
+    ctx.textAlign = 'center';
+    ctx.fillText(PLAT_ICONS[p]||p.slice(0,2), x+w/2, H-h-4);
+  });
+}
+
+// ── AI Generator ───────────────────────────────────────────────────────────
+function generateAI() {
+  const prompt   = document.getElementById('ai-prompt')?.value || '';
+  const platform = document.getElementById('ai-platform')?.value || 'instagram';
+  const tone     = document.getElementById('ai-tone')?.value || 'engaging';
+  if (!prompt.trim()) { showToast('Décris ton post d\'abord !', 'var(--amber)'); return; }
+  sendCmd({cmd:'generate_ai', prompt, platform, tone});
+}
+
+function renderAIResult(result, platform) {
+  const el = document.getElementById('ai-results');
+  if (!el) return;
+  if (result.error) {
+    el.innerHTML = `<div style="background:var(--reddim);border:1px solid var(--red)33;border-radius:8px;padding:12px;font-size:12px;color:var(--red)">⚠ ${result.error}</div>`;
+    return;
+  }
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg4);border-radius:8px;padding:14px;font-size:13px;color:var(--text2);line-height:1.6;border:1px solid var(--border2)';
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:11px;font-weight:600;color:${PLAT_COLORS[platform]||'var(--blue)'}">${PLAT_ICONS[platform]||''} ${platform}</span>
+      <button class="btn btn-primary" style="padding:3px 10px;font-size:11px" onclick="useAIContent(this)">Utiliser →</button>
+    </div>
+    <div class="ai-content-text">${result.content||''}</div>
+    ${result.hashtags?.length ? `<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap">${result.hashtags.map(h=>`<span style="font-size:10px;color:${PLAT_COLORS[platform]||'var(--blue)'}">${h}</span>`).join(' ')}</div>` : ''}`;
+  el.prepend(card);
+  (el.children.length > 6) && el.removeChild(el.lastChild);
+}
+
+function useAIContent(btn) {
+  const card = btn.closest('div');
+  const text  = card.querySelector('.ai-content-text')?.textContent || '';
+  const tagsEls = card.querySelectorAll('[style*="font-size:10px"]');
+  const tags = Array.from(tagsEls).map(e => e.textContent.trim()).filter(t=>t.startsWith('#'));
+  document.getElementById('post-content').value = text;
+  currentHashtags = tags;
+  renderHashtags();
+  updateCharCount();
+  showPage('compose');
+  showToast('✓ Contenu copié dans le compositeur', 'var(--green)');
+}
+
+// ── Templates ──────────────────────────────────────────────────────────────
+const TEMPLATES = [
+  {name:'Promotion', icon:'💸', text:'🎉 PROMO LIMITÉE ! Profitez de {X}% de réduction sur {produit}. Offre valable jusqu\'au {date}. Commandez maintenant ! 👇'},
+  {name:'Question d\'engagement', icon:'💬', text:'Je veux connaître votre avis ! 🤔 Qu\'est-ce qui vous aide le plus dans {domaine} ? Commentez ci-dessous 👇'},
+  {name:'Astuce', icon:'💡', text:'ASTUCE DU JOUR 💡\n\n{astuce}\n\nSauvegarder ce post pour y revenir plus tard ! 🔖'},
+  {name:'Derrière les coulisses', icon:'🎬', text:'Vous voulez voir comment on travaille ? 🎬\n\nVoici un aperçu exclusif de {sujet}. Likez si vous voulez en voir plus ! 👍'},
+  {name:'Témoignage client', icon:'⭐', text:'⭐⭐⭐⭐⭐\n\n"{témoignage}"\n\n— {client}\n\nMerci pour votre confiance ! ❤️'},
+  {name:'Annonce produit', icon:'🚀', text:'🚀 NOUVEAU ! Présentation de {produit}\n\n✅ {avantage1}\n✅ {avantage2}\n✅ {avantage3}\n\nDisponible maintenant ! Lien en bio 🔗'},
+];
+
+function renderTemplatesGrid() {
+  const el = document.getElementById('templates-grid');
+  if (!el) return;
+  el.innerHTML = TEMPLATES.map(t => `
+    <div style="background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:12px;cursor:pointer;transition:.15s" 
+         onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border2)'"
+         onclick="useTemplate('${encodeURIComponent(t.text)}')">
+      <div style="font-size:18px;margin-bottom:6px">${t.icon}</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${t.name}</div>
+      <div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${t.text.slice(0,60)}…</div>
+    </div>`).join('');
+}
+
+function useTemplate(encoded) {
+  const text = decodeURIComponent(encoded);
+  document.getElementById('post-content').value = text;
+  updateCharCount();
+  showPage('compose');
+  showToast('✓ Template chargé dans le compositeur', 'var(--green)');
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────
+function saveSettings() {
+  const settings = {
+    anthropic_api_key: document.getElementById('s-api-key')?.value || '',
+    timezone:          document.getElementById('s-timezone')?.value || 'America/Toronto',
+    watermark_text:    document.getElementById('s-watermark')?.value || '',
+  };
+  sendCmd({cmd:'save_settings', settings});
+}
+
+// ── Notifications ──────────────────────────────────────────────────────────
+function renderNotifications(notifs) {
+  const el = document.getElementById('notifications-list');
+  const badge = document.getElementById('notif-count');
+  if (badge) {
+    badge.textContent = notifs.length;
+    badge.style.display = notifs.length ? 'inline' : 'none';
+  }
+  if (!el) return;
+  el.innerHTML = notifs.map(n => `
+    <div class="notif">
+      <div class="notif-icon">${n.level==='success'?'✅':n.level==='error'?'❌':'ℹ️'}</div>
+      <div class="notif-msg">${n.message}</div>
+      <div class="notif-time">${n.ts}</div>
+    </div>`).join('') || '<div style="padding:14px;font-size:12px;color:var(--text3)">Aucune notification</div>';
+}
+
+function clearNotifications() {
+  const el = document.getElementById('notifications-list');
+  if (el) el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--text3)">Aucune notification</div>';
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showPage(id, navEl) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const page = document.getElementById('page-'+id);
+  if (page) page.classList.add('active');
+  if (navEl) navEl.classList.add('active');
+  if (id === 'analytics') sendCmd({cmd:'get_analytics', period:'30d'});
+  if (id === 'ai') renderTemplatesGrid();
+  if (id === 'calendar') renderCalendar(state.posts||[]);
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg, color) {
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--border3);border-radius:8px;padding:10px 16px;font-size:12px;z-index:9999;color:${color};box-shadow:0 4px 20px rgba(0,0,0,.5)`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderTemplatesGrid();
+connect();
+</script>
+</body>
+</html>
