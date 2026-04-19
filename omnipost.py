@@ -30,6 +30,20 @@ except ImportError:
     HAS_WS = False
     print("[WARN] pip install websockets")
 
+try:
+    from genia_listener import listener_loop as genia_listener_loop
+    HAS_GENIA = True
+except ImportError:
+    HAS_GENIA = False
+    print("[WARN] genia_listener.py not found — simple GeniA cross-posting disabled")
+
+try:
+    import genia_pipeline
+    HAS_PIPELINE = True
+except ImportError:
+    HAS_PIPELINE = False
+    print("[WARN] genia_pipeline.py not found — GeniA pipeline disabled")
+
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -151,6 +165,17 @@ DEFAULT_SETTINGS = {
         "youtube":   {"client_id": "", "client_secret": ""},
         "pinterest": {"app_id": "", "app_secret": ""},
         "twitter":   {"api_key": "", "api_secret": "", "bearer_token": ""},
+    },
+    "genia": {
+        "enabled":          False,
+        "api_url":          "https://api.genia.social",
+        "api_token":        "",
+        "auto_publish":     False,
+        "platforms":        ["instagram", "facebook", "tiktok"],
+        "default_hashtags": ["#metal", "#underground", "#GIaUnderground"],
+        "poll_seconds":     300,
+        "lookback_hours":   24,
+        "credit_text":      "via GIa Underground 🤘 https://genia.social",
     }
 }
 
@@ -664,6 +689,41 @@ async def handle_command(ws, msg: dict):
         await ws.send(json.dumps({"type": "settings_saved"}))
         add_notification("⚙️ Paramètres sauvegardés", "info")
 
+    elif cmd == "save_genia":
+        # Save GeniA listener config (subset of SETTINGS["genia"])
+        cfg = msg.get("genia", {}) or {}
+        if "genia" not in SETTINGS:
+            SETTINGS["genia"] = {}
+        for k, v in cfg.items():
+            SETTINGS["genia"][k] = v
+        save_settings(SETTINGS)
+        await ws.send(json.dumps({"type": "genia_saved", "genia": SETTINGS["genia"]}))
+        add_notification(
+            "🤘 GeniA listener " + ("activé" if SETTINGS["genia"].get("enabled") else "désactivé"),
+            "info",
+        )
+
+    elif cmd == "get_genia":
+        await ws.send(json.dumps({"type": "genia_config", "genia": SETTINGS.get("genia", {})}))
+
+    # ── Pipeline (fabrication → conversion → approbation → drip) ─────────
+    elif cmd == "pipeline_status" and HAS_PIPELINE:
+        await ws.send(json.dumps(genia_pipeline.get_status_payload()))
+
+    elif cmd == "pipeline_list" and HAS_PIPELINE:
+        phase = msg.get("phase", "converted")
+        await ws.send(json.dumps(genia_pipeline.get_list_payload(phase)))
+
+    elif cmd == "pipeline_approve" and HAS_PIPELINE:
+        ids = msg.get("ids", "all")
+        result = await genia_pipeline.approve(ids, broadcast, add_notification)
+        await ws.send(json.dumps({"type": "pipeline_approve_done", **result}))
+
+    elif cmd == "pipeline_reject" and HAS_PIPELINE:
+        ids = msg.get("ids", [])
+        result = await genia_pipeline.reject(ids, broadcast, add_notification)
+        await ws.send(json.dumps({"type": "pipeline_reject_done", **result}))
+
     elif cmd == "save_oauth":
         platform = msg.get("platform")
         keys     = msg.get("keys", {})
@@ -807,9 +867,27 @@ async def main_async():
         async with websockets.serve(ws_handler, "localhost", WS_PORT):
             log.info(f"[WS] Serveur WebSocket sur ws://localhost:{WS_PORT}")
             async with auth_srv:
-                await asyncio.gather(
-                    scheduler_loop(),
-                )
+                tasks = [scheduler_loop()]
+                if HAS_GENIA:
+                    log.info("[GENIA] Listener simple actif")
+                    tasks.append(genia_listener_loop(
+                        get_settings=lambda: SETTINGS,
+                        omnipost_state=STATE,
+                        save_posts_fn=save_posts,
+                        broadcast_fn=broadcast,
+                        add_notification_fn=add_notification,
+                    ))
+                if HAS_PIPELINE:
+                    log.info("[PIPELINE] Fabrication → Conversion → Approbation → Drip actif")
+                    tasks.append(genia_pipeline.run_all_loops(
+                        get_settings=lambda: SETTINGS,
+                        omnipost_state=STATE,
+                        save_posts_fn=save_posts,
+                        publish_post_fn=publish_post,
+                        broadcast_fn=broadcast,
+                        add_notification_fn=add_notification,
+                    ))
+                await asyncio.gather(*tasks)
     else:
         async with auth_srv:
             await asyncio.sleep(9999)
@@ -817,10 +895,11 @@ async def main_async():
 def main():
     print("""
 ╔══════════════════════════════════════════════╗
-║        OmniPost v1.0.0 — Démarrage          ║
+║      OmniPost v1.1.0 — Démarrage            ║
 ╠══════════════════════════════════════════════╣
 ║  Facebook • Instagram • TikTok              ║
 ║  YouTube • Pinterest • Twitter/X            ║
+║  ➜ GeniA listener (cross-post auto)         ║
 ╚══════════════════════════════════════════════╝
 """)
     log.info("[START] OmniPost démarré")
