@@ -56,6 +56,114 @@ def genia_delete_post(post_id):
     qs = urllib.parse.urlencode({'id': 'eq.' + post_id})
     return _genia_request('DELETE', '/rest/posts?' + qs)
 
+
+# ── Drip schedule helpers ──────────────────────────────────────────────
+
+OMNIPOST_SETTINGS = '/srv/omnipost/omnipost_settings.json'
+DRIP_STATE = '/srv/omnipost/pipeline_drip_state.json'
+OMNIPOST_POSTS = '/srv/omnipost/omnipost_posts.json'
+
+
+def _read_json(path, default=None):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return default if default is not None else {}
+
+
+def get_schedule_payload():
+    """Return next drip time + approved queue + recent published with platform results."""
+    settings = _read_json(OMNIPOST_SETTINGS, {})
+    genia_cfg = settings.get('genia', {}) or {}
+    drip_per_day = int(genia_cfg.get('drip_per_day', 1))
+    drip_hour = int(genia_cfg.get('drip_hour', 14))
+    platforms = list(genia_cfg.get('platforms', []))
+    auto_publish = bool(genia_cfg.get('auto_publish', False))
+
+    # Next drip time (today @ drip_hour if not yet, else tomorrow)
+    now = datetime.now()
+    today_drip = now.replace(hour=drip_hour, minute=0, second=0, microsecond=0)
+    drip_state = _read_json(DRIP_STATE, {})
+    today_str = now.strftime('%Y-%m-%d')
+    published_today = drip_state.get('published_today', 0) if drip_state.get('day') == today_str else 0
+    quota_left = max(0, drip_per_day - published_today)
+
+    if quota_left > 0 and now < today_drip:
+        next_drip = today_drip
+    elif quota_left > 0 and now >= today_drip:
+        # Drip-eligible NOW (within current day window)
+        next_drip = now.replace(minute=(now.minute // 10 + 1) * 10 % 60, second=0, microsecond=0)
+    else:
+        # Tomorrow
+        from datetime import timedelta as _td
+        next_drip = (today_drip + _td(days=1))
+
+    # Approved queue (FIFO oldest first — that's what drip picks)
+    approved = list_phase('approved')
+    approved.sort(key=lambda m: m.get('approved_at', ''))
+
+    # Recent published — collect from pipeline/published meta + omnipost_posts.json results
+    published_meta = list_phase('published')
+    op_posts = _read_json(OMNIPOST_POSTS, [])
+    op_by_source = {}
+    for p in (op_posts if isinstance(op_posts, list) else []):
+        sid = p.get('source_id') or p.get('id', '').replace('genia_', '')
+        if sid:
+            op_by_source[sid] = p
+
+    recent = []
+    for m in sorted(published_meta, key=lambda x: x.get('published_at', ''), reverse=True)[:30]:
+        op = op_by_source.get(m['id'], {})
+        results = op.get('results') or m.get('results') or {}
+        platform_links = []
+        for plat, res in (results.items() if isinstance(results, dict) else []):
+            if not isinstance(res, dict):
+                continue
+            url = res.get('url') or res.get('shorts_url')
+            if not url and plat == 'facebook' and res.get('id'):
+                url = 'https://www.facebook.com/' + str(res['id']).replace('_', '/posts/')
+            platform_links.append({
+                'platform': plat,
+                'status': res.get('status', 'unknown'),
+                'url': url,
+                'error': res.get('error'),
+            })
+        recent.append({
+            'id': m['id'],
+            'title': m.get('title', '')[:80],
+            'published_at': m.get('published_at', ''),
+            'platforms': platform_links,
+            'genia_link': m.get('link', ''),
+        })
+
+    return {
+        'config': {
+            'auto_publish': auto_publish,
+            'drip_per_day': drip_per_day,
+            'drip_hour_utc': drip_hour,
+            'platforms': platforms,
+            'genia_enabled': bool(genia_cfg.get('enabled')),
+        },
+        'today': {
+            'date': today_str,
+            'published_today': published_today,
+            'quota_left': quota_left,
+        },
+        'next_drip_iso': next_drip.isoformat(),
+        'next_drip_human': next_drip.strftime('%a %d %b %H:%M UTC'),
+        'queue_count': len(approved),
+        'queue_next': [
+            {
+                'id': m['id'],
+                'title': m.get('title', '')[:60],
+                'approved_at': m.get('approved_at', ''),
+            }
+            for m in approved[:10]
+        ],
+        'recent_published': recent,
+    }
+
 HTML = r"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>GIa Pipeline</title>
 <meta http-equiv="refresh" content="60">
@@ -299,6 +407,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             offset = int((q.get('offset') or ['0'])[0])
             code, data = genia_list_posts(limit=limit, offset=offset)
             return self._json({'status_code': code, 'items': data if isinstance(data, list) else []})
+        if u.path == '/api/schedule':
+            return self._json(get_schedule_payload())
         self.send_error(404)
 
     def do_POST(self):
