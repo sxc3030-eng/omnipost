@@ -177,7 +177,7 @@ def _truncate(s: str, n: int) -> str:
 
 def build_captions(post: dict, cfg: dict) -> dict:
     """Return {platform: caption} for all configured platforms."""
-    artist  = (post.get("artist_name") or "").strip()
+    artist  = (post.get("caption") or "").strip().split(chr(10))[0][:60].strip()
     caption = (post.get("caption") or "").strip()
     pid     = post.get("id", "")
 
@@ -219,20 +219,36 @@ async def _ingest_one(post: dict, cfg: dict, broadcast_fn, add_notification_fn):
     folder = post_dir("created", pid)
     folder.mkdir(parents=True, exist_ok=True)
 
-    # Download cover image
-    img_url = post.get("image_url") or post.get("media_url")
-    if img_url:
-        _download(img_url, folder / "cover.jpg")
+    # Determine media type from real schema (media_url + type/thumbnail_url)
+    media_url = post.get("media_url") or ""
+    thumb_url = post.get("thumbnail_url") or ""
+    is_video = (
+        post.get("type") in ("video", "clip")
+        or media_url.lower().endswith((".mp4", ".mov", ".webm"))
+        or "youtube.com" in media_url
+        or "youtu.be" in media_url
+    )
 
-    # Download audio preview if present
+    # YouTube links: use the thumbnail as cover (we don't redistribute YT video)
+    if "youtube.com" in media_url or "youtu.be" in media_url:
+        if thumb_url:
+            _download(thumb_url, folder / "cover.jpg")
+        is_video = False  # treat as image+text card
+    elif is_video:
+        _download(media_url, folder / "source.mp4")
+        if thumb_url:
+            _download(thumb_url, folder / "cover.jpg")
+    else:
+        # Image post
+        if media_url:
+            _download(media_url, folder / "cover.jpg")
+        elif thumb_url:
+            _download(thumb_url, folder / "cover.jpg")
+
+    # Audio preview if present
     aud_url = post.get("audio_url")
     if aud_url:
         _download(aud_url, folder / "audio.mp3")
-
-    # Download original video if it's already a video post
-    vid_url = post.get("video_url")
-    if vid_url:
-        _download(vid_url, folder / "source.mp4")
 
     meta = {
         "id":           pid,
@@ -243,7 +259,7 @@ async def _ingest_one(post: dict, cfg: dict, broadcast_fn, add_notification_fn):
         "captions":     build_captions(post, cfg),
         "platforms":    list(cfg.get("platforms", [])),
         "link":         f"https://genia.social/post/{pid}",
-        "title":        (post.get("artist_name") or "")[:100] or "GIa Underground",
+        "title":        ((post.get("caption") or "").split(chr(10))[0][:100] or "GIa Underground"),
         "has_image":    (folder / "cover.jpg").exists(),
         "has_audio":    (folder / "audio.mp3").exists(),
         "has_source_video": (folder / "source.mp4").exists(),
@@ -271,7 +287,7 @@ async def _ingest_loop(get_settings, broadcast_fn, add_notification_fn):
             seen = set(state.get("imported_ids", []))
 
             params = {
-                "select": "id,caption,artist_name,image_url,audio_url,video_url,created_at",
+                "select": "id,type,caption,media_url,thumbnail_url,audio_url,created_at",
                 "order":  "created_at.desc",
                 "limit":  "30",
             }
@@ -306,12 +322,40 @@ async def _ingest_loop(get_settings, broadcast_fn, add_notification_fn):
 
 # ── PHASE 2 — CONVERT (ffmpeg → 9:16 vertical) ─────────────────────────
 
-def _sanitize_text(s: str) -> str:
+def _sanitize_text(s: str, maxlen: int = 80) -> str:
     if not s:
         return ""
     s = re.sub(r"[\r\n]+", " ", str(s))
     s = s.replace("\\", "").replace(":", "\\:").replace("'", "")
-    return s.strip()[:80]
+    return s.strip()[:maxlen]
+
+
+def _wrap_text(s: str, max_chars_per_line: int = 22, max_lines: int = 2) -> str:
+    """Wrap text on word boundaries. Returns ffmpeg drawtext-compatible string with literal newlines."""
+    if not s:
+        return ""
+    words = s.split()
+    lines = []
+    cur = ""
+    for w in words:
+        if len(cur) + len(w) + 1 <= max_chars_per_line:
+            cur = (cur + " " + w).strip()
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w[:max_chars_per_line]
+        if len(lines) >= max_lines:
+            break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+    # Add ellipsis if truncated
+    if len(" ".join(lines)) < len(s):
+        if lines:
+            lines[-1] = lines[-1][:-1] + "..." if len(lines[-1]) > max_chars_per_line - 3 else lines[-1] + "..."
+    # ffmpeg drawtext: literal newline = chr(10)
+    return chr(10).join(lines)
 
 
 def _build_video(meta: dict, folder: Path, cfg: dict) -> bool:
@@ -346,27 +390,43 @@ def _build_video(meta: dict, folder: Path, cfg: dict) -> bool:
             log.warning(f"[convert] {meta.get('id')}: no cover image and no source video")
             return False
 
-        # Ken Burns zoom-pan from still image
-        total_frames = dur * fps
-        zoom = "min(zoom+0.0008,1.15)"
+        # Keep full image visible, letterbox to 9:16 with safe text bands at top/bottom.
+        # The image fits inside ~70% of the height (h * 0.70 = ~1344px for 1920),
+        # leaving ~288px top + ~288px bottom for text overlays on dark bg.
+        img_h = int(height * 0.70)
+        # Scale image preserving aspect ratio so longest side fits the safe area
+        # then pad center to 1080x1920 with black bg
         kenburns = (
-            f"scale=8000:-1,zoompan=z='{zoom}':d={total_frames}:"
-            f"s={width}x{height}:fps={fps},setsar=1"
+            f"scale='min(iw*{img_h}/ih\,{width})':'min({img_h}\,ih*{width}/iw)':"
+            f"force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+            f"setsar=1,fps={fps}"
         )
-        artist_t = _sanitize_text(meta.get("title") or "")
-        caption_raw = (meta.get("source_post") or {}).get("caption") or ""
-        title_t  = _sanitize_text(caption_raw[:60])
+        # Title (artist) at top, wrapped to 2 lines, max ~22 chars/line at fontsize 56
+        artist_raw = meta.get("title") or ""
+        artist_wrapped = _wrap_text(artist_raw, max_chars_per_line=22, max_lines=2)
+        artist_t = _sanitize_text(artist_wrapped, maxlen=120)
 
+        # Caption (album/track info) at bottom, wrapped to 2 lines max
+        caption_raw = (meta.get("source_post") or {}).get("caption") or ""
+        caption_first_chunk = caption_raw.strip().split(chr(10))[0]
+        caption_wrapped = _wrap_text(caption_first_chunk, max_chars_per_line=28, max_lines=2)
+        title_t = _sanitize_text(caption_wrapped, maxlen=140)
+
+        # All texts use line_spacing for multi-line, semi-transparent black box for legibility,
+        # safe margins (90px from edges) so nothing gets cut off on TikTok/Reels UI overlays
         drawtext = (
             f",drawtext=fontfile={font}:text='{artist_t}':"
-            f"fontsize=64:fontcolor=white:bordercolor=black:borderw=4:"
-            f"x=(w-text_w)/2:y=120"
+            f"fontsize=56:fontcolor=white:bordercolor=black:borderw=4:"
+            f"line_spacing=12:"
+            f"x=(w-text_w)/2:y=80"
             f",drawtext=fontfile={font}:text='{title_t}':"
-            f"fontsize=42:fontcolor=#DC2626:bordercolor=black:borderw=3:"
-            f"x=(w-text_w)/2:y=h-220"
+            f"fontsize=36:fontcolor=#DC2626:bordercolor=black:borderw=3:"
+            f"line_spacing=10:"
+            f"x=(w-text_w)/2:y=h-300"
             f",drawtext=fontfile={font}:text='GIa Underground':"
-            f"fontsize=28:fontcolor=white@0.7:"
-            f"x=(w-text_w)/2:y=h-100"
+            f"fontsize=26:fontcolor=white@0.75:"
+            f"x=(w-text_w)/2:y=h-180"
         )
         vf = kenburns + drawtext
 
