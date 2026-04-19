@@ -391,21 +391,58 @@ async def _post_youtube(token: str, title: str, description: str, media: list) -
         return {"status": "error", "error": str(e)}
 
 async def _post_pinterest(token: str, description: str, media: list, link: str) -> dict:
+    """
+    Phase 5 — real Pinterest v5 publisher.
+    Requires:
+      - oauth.pinterest.access_token (Bearer)
+      - oauth.pinterest.pinterest_board_id (target board, e.g. "GIa Underground")
+    Pinterest pins MUST have an image (image_url) — text-only is not supported.
+    Docs: https://developers.pinterest.com/docs/api/v5/pins-create
+    See PINTEREST_SETUP.md for OAuth + board setup.
+    """
+    cfg = SETTINGS.get("oauth", {}).get("pinterest", {}) or {}
+    bearer = token or cfg.get("access_token", "")
+    board_id = cfg.get("pinterest_board_id", "")
+    if not bearer:
+        return {"status": "error", "error": "Pinterest access_token not configured (see PINTEREST_SETUP.md)"}
+    if not board_id:
+        return {"status": "error", "error": "Pinterest pinterest_board_id not configured (see PINTEREST_SETUP.md)"}
+    if not media:
+        return {"status": "error", "error": "Pinterest pins require an image (no media provided)"}
+
+    image_url = media[0]
+    title = (description or "GIa Underground")[:100]
+    payload = {
+        "board_id": board_id,
+        "title": title,
+        "description": (description or "")[:500],
+        "link": link or "https://genia.social",
+        "media_source": {"source_type": "image_url", "url": image_url},
+    }
+    headers = {
+        "Authorization": f"Bearer {bearer}",
+        "Content-Type": "application/json",
+    }
     try:
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        data = json.dumps({
-            "title": description[:100],
-            "description": description,
-            "link": link or "",
-            "media_source": {"source_type": "image_url", "url": media[0] if media else ""}
-        }).encode()
         req = urllib.request.Request(
             "https://api.pinterest.com/v5/pins",
-            data=data, headers=headers, method="POST"
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
         )
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=20) as r:
             result = json.loads(r.read().decode())
-        return {"status": "published", "id": result.get("id")}
+        return {
+            "status": "published",
+            "id": result.get("id"),
+            "url": f"https://www.pinterest.com/pin/{result.get('id')}/" if result.get("id") else None,
+        }
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            err_body = ""
+        return {"status": "error", "error": f"HTTP {e.code}: {err_body[:300]}"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

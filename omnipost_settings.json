@@ -69,7 +69,10 @@
     },
     "pinterest": {
       "app_id": "",
-      "app_secret": ""
+      "app_secret": "",
+      "access_token": "",
+      "refresh_token": "",
+      "pinterest_board_id": ""
     },
     "twitter": {
       "api_key": "",
