@@ -221,6 +221,8 @@ def save_analytics():
 
 STATE.posts     = load_posts()
 STATE.analytics = load_analytics()
+# Load persisted social accounts from settings
+STATE.accounts  = SETTINGS.get("accounts", {})
 
 # ── Platform connectors ────────────────────────────────────────────────────
 def get_oauth_url(platform: str) -> str:
@@ -294,7 +296,7 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
     media = post.get("media", [])
 
     if platform == "facebook":
-        return await _post_facebook(token, full_text, media)
+        return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"))
     elif platform == "instagram":
         return await _post_instagram(token, full_text, media)
     elif platform == "tiktok":
@@ -307,19 +309,24 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
         return await _post_twitter(post, full_text, media)
     return {"status": "error", "error": "Unknown platform"}
 
-async def _post_facebook(token: str, text: str, media: list) -> dict:
+async def _post_facebook(token: str, text: str, media: list, page_id: str = None) -> dict:
+    """Post to Facebook page. Uses page_id if provided (token=PAGE token),
+    otherwise looks up via /me/accounts (token=USER token)."""
     try:
-        # Get page ID first
-        req = urllib.request.Request(
-            f"https://graph.facebook.com/v18.0/me/accounts?access_token={token}"
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            pages = json.loads(r.read().decode())
-        if not pages.get("data"):
-            return {"status": "error", "error": "No pages found"}
-        page = pages["data"][0]
-        page_token = page["access_token"]
-        page_id    = page["id"]
+        # If page_id not provided, lookup via user token
+        if not page_id:
+            req = urllib.request.Request(
+                f"https://graph.facebook.com/v18.0/me/accounts?access_token={token}"
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                pages = json.loads(r.read().decode())
+            if not pages.get("data"):
+                return {"status": "error", "error": "No pages found"}
+            page = pages["data"][0]
+            page_token = page["access_token"]
+            page_id    = page["id"]
+        else:
+            page_token = token  # caller already gave us the page token
 
         data = {"message": text, "access_token": page_token}
         payload = urllib.parse.urlencode(data).encode()
@@ -329,7 +336,10 @@ async def _post_facebook(token: str, text: str, media: list) -> dict:
         )
         with urllib.request.urlopen(req, timeout=15) as r:
             result = json.loads(r.read().decode())
-        return {"status": "published", "id": result.get("id")}
+        return {"status": "published", "id": result.get("id"),
+                "url": f"https://www.facebook.com/{result.get('id', '').replace('_', '/posts/')}"}
+    except urllib.error.HTTPError as e:
+        return {"status": "error", "error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:200]}"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -383,10 +393,84 @@ async def _post_tiktok(token: str, text: str, media: list) -> dict:
         return {"status": "error", "error": str(e)}
 
 async def _post_youtube(token: str, title: str, description: str, media: list) -> dict:
+    """Upload a video to YouTube via multipart Data API v3."""
+    import urllib.request, urllib.error
     try:
         if not media:
             return {"status": "error", "error": "YouTube requires a video file"}
-        return {"status": "manual", "message": f"Upload video to YouTube Studio with title: {title}"}
+        video_path = media[0]
+        if not os.path.isfile(video_path):
+            return {"status": "error", "error": "video not found: " + str(video_path)}
+
+        def _do_upload():
+            with open(video_path, "rb") as f:
+                vbytes = f.read()
+            boundary = "----GIaUploadBoundary42"
+            metadata = json.dumps({
+                "snippet": {
+                    "title": (title or "GIa Underground")[:100],
+                    "description": (description or "")[:4900],
+                    "categoryId": "10",
+                    "tags": ["metal", "underground", "GIaUnderground", "shorts"],
+                },
+                "status": {
+                    "privacyStatus": "public",
+                    "selfDeclaredMadeForKids": False,
+                },
+            }).encode("utf-8")
+            CRLF = bytes([13, 10])
+            DASH = b"--"
+            bnd = boundary.encode()
+            body = (
+                DASH + bnd + CRLF +
+                b"Content-Type: application/json; charset=UTF-8" + CRLF + CRLF +
+                metadata + CRLF +
+                DASH + bnd + CRLF +
+                b"Content-Type: video/mp4" + CRLF + CRLF +
+                vbytes + CRLF +
+                DASH + bnd + DASH + CRLF
+            )
+            req = urllib.request.Request(
+                "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=multipart&part=snippet,status",
+                data=body,
+                headers={
+                    "Authorization": "Bearer " + token,
+                    "Content-Type": "multipart/related; boundary=" + boundary,
+                    "Content-Length": str(len(body)),
+                },
+            )
+            return json.loads(urllib.request.urlopen(req, timeout=180).read().decode())
+
+        import asyncio as _asyncio
+        loop = _asyncio.get_event_loop()
+        try:
+            r = await loop.run_in_executor(None, _do_upload)
+        except urllib.error.HTTPError as e:
+            # On 401, try to refresh the access token and retry once
+            if e.code == 401:
+                try:
+                    new_tok = _refresh_youtube_token()
+                    if new_tok:
+                        # Retry with new token (rebuild the closure)
+                        # nonlocal token (param overwrite)
+                        token = new_tok
+                        r = await loop.run_in_executor(None, _do_upload)
+                    else:
+                        err_body = e.read().decode(errors="ignore")[:300]
+                        return {"status": "error", "error": "HTTP 401 refresh failed: " + err_body}
+                except Exception as e2:
+                    return {"status": "error", "error": "Refresh failed: " + str(e2)}
+            else:
+                err_body = e.read().decode(errors="ignore")[:300]
+                return {"status": "error", "error": "HTTP " + str(e.code) + ": " + err_body}
+
+        vid = r.get("id")
+        return {
+            "status": "published",
+            "id": vid,
+            "url": "https://www.youtube.com/watch?v=" + str(vid),
+            "shorts_url": "https://www.youtube.com/shorts/" + str(vid),
+        }
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
