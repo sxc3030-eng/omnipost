@@ -204,6 +204,12 @@ MIT License — Free, open source, modifiable.
 
 ---
 
+### Method
+
+Architecture-first, AI-paired. Built over **5 weeks (March-April 2026)** with **Claude (Opus 4.6)** as paired implementation and audit partner. Each commit cross-audited: code review, dependency check, UX pass on the multi-platform composer and viral-score engine. Claude API powers the optional AI content generator and competitor-analysis backends.
+
+---
+
 <div align="center">
 
 ⭐ **If OmniPost saves you time, please star it on GitHub!** ⭐
