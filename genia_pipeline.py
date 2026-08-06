@@ -60,6 +60,7 @@ DEFAULT_GENIA = {
     # Drip
     "drip_per_day":     1,
     "drip_hour":        14,          # 14:00 local
+    "drip_days":        [],          # weekday numbers, Mon=0..Sun=6; [] = every day
     "drip_seconds":     600,         # check every 10 min
     "auto_publish":     True,        # if false, drip just stages without publishing
 }
@@ -616,6 +617,12 @@ async def _drip_loop(get_settings, omnipost_state, save_posts_fn, publish_post_f
             # Check if it's time and we haven't hit daily quota
             target_hour = int(cfg.get("drip_hour", 14))
             per_day    = int(cfg.get("drip_per_day", 1))
+
+            # Restrict to chosen weekdays — [4] publishes every Friday only.
+            drip_days = cfg.get("drip_days") or []
+            if drip_days and now.weekday() not in [int(d) for d in drip_days]:
+                await asyncio.sleep(delay)
+                continue
 
             if now.hour < target_hour:
                 await asyncio.sleep(delay)
