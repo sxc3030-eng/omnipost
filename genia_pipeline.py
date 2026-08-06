@@ -177,12 +177,17 @@ def _truncate(s: str, n: int) -> str:
 
 def build_captions(post: dict, cfg: dict) -> dict:
     """Return {platform: caption} for all configured platforms."""
-    artist  = (post.get("caption") or "").strip().split(chr(10))[0][:60].strip()
     caption = (post.get("caption") or "").strip()
     pid     = post.get("id", "")
 
-    header = f"🤘 {artist}\n\n" if artist else ""
-    body   = caption
+    # The first line is the headline. It used to be copied into the header
+    # while the body still carried the whole caption, so every published post
+    # opened with the same sentence twice — lift it out of the body instead.
+    lines    = caption.split(chr(10))
+    headline = lines[0].strip()
+    body     = chr(10).join(lines[1:]).strip()
+
+    header = f"🤘 {headline}\n\n" if headline else ""
     link   = f"\n\n👉 {cfg.get('credit_text', '')}"
     if pid:
         link += f"\nhttps://genia.social/post/{pid}"

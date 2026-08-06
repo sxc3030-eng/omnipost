@@ -296,10 +296,18 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
         return {"status": "error", "error": "Not connected"}
 
     token = acc.get("access_token", "")
-    content = post.get("content", "")
-    hashtags = " ".join(post.get("hashtags", []))
-    full_text = f"{content}\n\n{hashtags}".strip()
     media = post.get("media", [])
+
+    # The pipeline builds a caption per platform, then only the primary one was
+    # ever published — every network got the Instagram wording. Prefer the
+    # platform's own caption, which already carries its link and hashtags.
+    per_platform = (post.get("captions") or {}).get(platform)
+    if per_platform:
+        full_text = per_platform.strip()
+    else:
+        content = post.get("content", "")
+        hashtags = " ".join(post.get("hashtags", []))
+        full_text = f"{content}\n\n{hashtags}".strip()
 
     if platform == "facebook":
         return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"))
