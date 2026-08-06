@@ -237,7 +237,10 @@ def get_oauth_url(platform: str) -> str:
         app_id = cfg.get("app_id", "")
         if not app_id:
             return ""
-        scope = "pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish"
+        # pages_show_list is what makes /me/accounts return anything at all —
+        # without it the page lookup comes back empty and nothing can publish.
+        scope = ("pages_show_list,pages_manage_posts,pages_read_engagement,"
+                 "business_management,instagram_basic,instagram_content_publish")
         return (f"https://www.facebook.com/v18.0/dialog/oauth"
                 f"?client_id={app_id}&redirect_uri={urllib.parse.quote(callback)}"
                 f"&scope={scope}&response_type=code")
@@ -301,7 +304,8 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
     if platform == "facebook":
         return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"))
     elif platform == "instagram":
-        return await _post_instagram(token, full_text, media)
+        return await _post_instagram(token, full_text, media,
+                                     ig_id=acc.get("ig_id"), page_id=acc.get("page_id"))
     elif platform == "tiktok":
         return await _post_tiktok(token, full_text, media)
     elif platform == "youtube":
@@ -461,7 +465,8 @@ async def _post_facebook(token: str, text: str, media: list, page_id: str = None
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-async def _post_instagram(token: str, caption: str, media: list) -> dict:
+async def _post_instagram(token: str, caption: str, media: list,
+                          ig_id: str = None, page_id: str = None) -> dict:
     """Publish a photo or reel to an Instagram Business account.
 
     Instagram's Content Publishing API only ingests media it can fetch itself,
@@ -478,12 +483,17 @@ async def _post_instagram(token: str, caption: str, media: list) -> dict:
                 "Host the media (e.g. upload it to genia.social) and use that URL."
             )}
 
-        # Get IG business account
-        data = _request_json(
-            f"{FB_API}/me?fields=instagram_business_account&access_token={token}", timeout=10)
-        ig_id = data.get("instagram_business_account", {}).get("id")
+        # instagram_business_account is a field on the Page, not on /me —
+        # querying /me always came back empty.
         if not ig_id:
-            return {"status": "error", "error": "No Instagram Business account linked"}
+            if not page_id:
+                return {"status": "error",
+                        "error": "Instagram not connected — reconnect it in the dashboard"}
+            data = _request_json(f"{FB_API}/{page_id}?" + urllib.parse.urlencode({
+                "fields": "instagram_business_account", "access_token": token}), timeout=15)
+            ig_id = (data.get("instagram_business_account") or {}).get("id")
+        if not ig_id:
+            return {"status": "error", "error": "No Instagram Business account linked to the Page"}
 
         # Step 1: create the media container
         fields = {"caption": caption, "access_token": token}
@@ -1162,6 +1172,72 @@ async def ws_handler(websocket):
         CLIENTS.discard(websocket)
 
 # ── Auth / OAuth callback server ───────────────────────────────────────────
+def _fb_complete_oauth(platform: str, code: str, callback: str) -> dict:
+    """Trade an authorization code for a durable page token.
+
+    Facebook hands back a short-lived user token, which is useless an hour
+    later. The chain is: code -> short user token -> long-lived user token ->
+    page token (page tokens minted from a long-lived user token do not expire).
+    """
+    cfg = SETTINGS.get("oauth", {}).get(platform, {})
+    app_id, app_secret = cfg.get("app_id", ""), cfg.get("app_secret", "")
+    if not app_id or not app_secret:
+        return {"error": "App ID / App Secret manquants dans les réglages OAuth"}
+
+    try:
+        short = _request_json(f"{FB_API}/oauth/access_token?" + urllib.parse.urlencode({
+            "client_id": app_id, "client_secret": app_secret,
+            "redirect_uri": callback, "code": code,
+        }), timeout=20)
+        user_token = short.get("access_token")
+        if not user_token:
+            return {"error": f"Échange du code refusé: {short}"}
+
+        # Upgrade to a ~60 day user token before deriving page tokens from it.
+        longed = _request_json(f"{FB_API}/oauth/access_token?" + urllib.parse.urlencode({
+            "grant_type": "fb_exchange_token", "client_id": app_id,
+            "client_secret": app_secret, "fb_exchange_token": user_token,
+        }), timeout=20)
+        user_token = longed.get("access_token", user_token)
+
+        pages = _request_json(
+            f"{FB_API}/me/accounts?" + urllib.parse.urlencode({"access_token": user_token}),
+            timeout=20)
+        data = pages.get("data") or []
+        if not data:
+            return {"error": ("Aucune Page trouvée. Vérifie que tu administres bien une Page "
+                              "et que la permission pages_show_list a été accordée.")}
+
+        page = data[0]
+        acc = {
+            "connected":    True,
+            "platform":     platform,
+            "access_token": page.get("access_token", ""),
+            "user_token":   user_token,
+            "page_id":      page.get("id", ""),
+            "page_name":    page.get("name", ""),
+            "pages":        [{"id": p.get("id"), "name": p.get("name")} for p in data],
+            "name":         page.get("name") or PLATFORMS.get(platform, {}).get("name", platform),
+        }
+
+        # instagram_business_account hangs off the Page, never off /me.
+        if platform == "instagram":
+            link = _request_json(f"{FB_API}/{acc['page_id']}?" + urllib.parse.urlencode({
+                "fields": "instagram_business_account", "access_token": acc["access_token"],
+            }), timeout=20)
+            ig_id = (link.get("instagram_business_account") or {}).get("id")
+            if not ig_id:
+                return {"error": ("Aucun compte Instagram Business rattaché à la Page "
+                                  f"« {acc['page_name']} ». Lie-le dans les paramètres de la Page.")}
+            acc["ig_id"] = ig_id
+
+        return acc
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 async def auth_handler(reader, writer):
     """Handles OAuth callbacks from social platforms"""
     try:
@@ -1183,24 +1259,43 @@ async def auth_handler(reader, writer):
 
             if code:
                 log.info(f"[OAUTH] Code reçu pour {platform}")
-                # Store code for token exchange
-                if platform not in STATE.accounts:
-                    STATE.accounts[platform] = {}
-                STATE.accounts[platform]["oauth_code"]  = code
-                STATE.accounts[platform]["connected"]   = True
-                STATE.accounts[platform]["platform"]    = platform
-                STATE.accounts[platform]["name"]        = PLATFORMS.get(platform, {}).get("name", platform)
-                # Notify dashboard
-                asyncio.create_task(broadcast({
-                    "type":     "platform_connected",
-                    "platform": platform,
-                    "account":  STATE.accounts[platform],
-                }))
-                add_notification(f"✅ {PLATFORMS.get(platform,{}).get('name',platform)} connecté !", "success")
-                body = f"""<html><body style="background:#0f0f13;color:#3dffb4;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-                    <div style="text-align:center"><h2>✅ {platform.title()} connecté !</h2>
-                    <p style="color:#9090a8">Tu peux fermer cette fenêtre.</p>
-                    <script>window.close();</script></div></body></html>"""
+                # The code is worthless on its own — it has to be traded for a
+                # token before anything can be published. Skipping this step is
+                # what made the dashboard show "connecté" while every publish
+                # failed with an empty access_token.
+                callback = f"http://localhost:{AUTH_PORT}/oauth/callback/{platform}"
+                if platform in ("facebook", "instagram"):
+                    acc = await asyncio.to_thread(_fb_complete_oauth, platform, code, callback)
+                else:
+                    acc = {"error": f"Échange de token non implémenté pour {platform}"}
+
+                if acc.get("error"):
+                    err = acc["error"]
+                    log.error(f"[OAUTH] {platform}: {err}")
+                    STATE.accounts.setdefault(platform, {})["connected"] = False
+                    add_notification(f"❌ {platform} : {err}", "error")
+                    asyncio.create_task(broadcast({
+                        "type": "oauth_error", "platform": platform, "error": err,
+                    }))
+                    body = f"""<html><body style="background:#0f0f13;color:#ff4d6a;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:24px">
+                        <div style="text-align:center;max-width:560px"><h2>❌ Connexion {platform} échouée</h2>
+                        <p style="color:#9090a8;font-size:14px;line-height:1.5">{err}</p></div></body></html>"""
+                else:
+                    STATE.accounts[platform] = acc
+                    SETTINGS["accounts"] = STATE.accounts
+                    save_settings(SETTINGS)          # survive a restart
+                    log.info(f"[OAUTH] {platform} connecté — page {acc.get('page_name')} ({acc.get('page_id')})")
+                    asyncio.create_task(broadcast({
+                        "type":     "platform_connected",
+                        "platform": platform,
+                        "account":  acc,
+                    }))
+                    add_notification(f"✅ {PLATFORMS.get(platform,{}).get('name',platform)} connecté !", "success")
+                    body = f"""<html><body style="background:#0f0f13;color:#3dffb4;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+                        <div style="text-align:center"><h2>✅ {platform.title()} connecté !</h2>
+                        <p style="color:#9090a8">Page : {acc.get('page_name','')}</p>
+                        <p style="color:#9090a8">Tu peux fermer cette fenêtre.</p>
+                        <script>window.close();</script></div></body></html>"""
             else:
                 body = f"""<html><body style="background:#0f0f13;color:#ff4d6a;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                     <div style="text-align:center"><h2>❌ Erreur: {error}</h2>
