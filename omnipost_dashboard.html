@@ -587,6 +587,7 @@ const PLAT_ICONS  = {facebook:'📘',instagram:'📸',tiktok:'🎵',youtube:'▶
 let selectedPlatforms = ['instagram','facebook'];
 let currentHashtags = [];
 let currentMedia = [];
+let pendingMedia = [];
 let scheduleDt = '';
 let calOffset = 0;
 
@@ -616,6 +617,15 @@ function handleMsg(msg) {
   if (msg.type === 'state') {
     state = msg;
     renderAll(msg);
+  } else if (msg.type === 'media_uploaded') {
+    const img = pendingMedia.shift();
+    if (msg.error) {
+      if (img) img.remove();
+      showToast('✗ ' + msg.error, 'var(--red)');
+    } else {
+      currentMedia.push(msg.path);
+      if (img) img.style.opacity = '1';
+    }
   } else if (msg.type === 'post_created' || msg.type === 'post_updated' || msg.type === 'post_deleted') {
     sendCmd({cmd:'get_state'});
     showToast('✓ Post ' + (msg.type === 'post_created' ? 'créé' : msg.type === 'post_deleted' ? 'supprimé' : 'mis à jour'), 'var(--green)');
@@ -758,7 +768,7 @@ function renderOAuthFields(accounts) {
     tiktok:    [{k:'client_key',l:'Client Key'},{k:'client_secret',l:'Client Secret',t:'password'}],
     youtube:   [{k:'client_id',l:'Client ID'},{k:'client_secret',l:'Client Secret',t:'password'}],
     pinterest: [{k:'app_id',l:'App ID'},{k:'app_secret',l:'App Secret',t:'password'}],
-    twitter:   [{k:'api_key',l:'API Key'},{k:'api_secret',l:'API Secret',t:'password'},{k:'bearer_token',l:'Bearer Token',t:'password'}],
+    twitter:   [{k:'api_key',l:'API Key'},{k:'api_secret',l:'API Secret',t:'password'},{k:'access_token',l:'Access Token (Read+Write)',t:'password'},{k:'access_token_secret',l:'Access Token Secret',t:'password'},{k:'bearer_token',l:'Bearer Token (lecture seule)',t:'password'}],
   };
   Object.entries(configs).forEach(([p, fields]) => {
     const el = document.getElementById('oauth-fields-'+p);
@@ -781,7 +791,8 @@ function saveOAuth(p) {
   const fields = {
     facebook: ['app_id','app_secret'], instagram: ['app_id','app_secret'],
     tiktok: ['client_key','client_secret'], youtube: ['client_id','client_secret'],
-    pinterest: ['app_id','app_secret'], twitter: ['api_key','api_secret','bearer_token'],
+    pinterest: ['app_id','app_secret'],
+    twitter: ['api_key','api_secret','access_token','access_token_secret'],
   };
   const keys = {};
   (fields[p]||[]).forEach(k => {
@@ -951,6 +962,7 @@ function clearComposer() {
   document.getElementById('post-content').value = '';
   currentHashtags = [];
   currentMedia = [];
+  pendingMedia = [];
   scheduleDt = '';
   document.getElementById('hashtag-area').innerHTML = '<input class="hashtag-input" id="hashtag-input" placeholder="+ ajouter un hashtag" onkeydown="addHashtag(event)">';
   document.getElementById('media-previews').innerHTML = '';
@@ -1009,16 +1021,30 @@ function addSuggestedTag(tag) {
 }
 
 // ── Media ──────────────────────────────────────────────────────────────────
+// A blob: URL only exists inside this tab, so the backend could never read it.
+// Ship the bytes over the socket instead and keep the saved path it returns.
 function addMedia(input) {
   const previews = document.getElementById('media-previews');
   Array.from(input.files).forEach(file => {
-    const url = URL.createObjectURL(file);
-    currentMedia.push(url);
     const img = document.createElement('img');
-    img.src = url; img.className = 'media-preview';
-    img.style.cssText = 'width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid var(--border3)';
+    img.src = URL.createObjectURL(file);
+    img.className = 'media-preview';
+    img.style.cssText = 'width:60px;height:60px;border-radius:6px;object-fit:cover;border:1px solid var(--border3);opacity:.35';
     previews.appendChild(img);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingMedia.push(img);
+      sendCmd({
+        cmd: 'upload_media',
+        filename: file.name,
+        data: String(reader.result).split(',')[1],   // drop the data: prefix
+      });
+    };
+    reader.onerror = () => showToast('✗ Lecture du fichier impossible', 'var(--red)');
+    reader.readAsDataURL(file);
   });
+  input.value = '';
 }
 
 // ── Posts rendering ────────────────────────────────────────────────────────
