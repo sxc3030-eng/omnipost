@@ -1351,7 +1351,12 @@ async def handle_command(ws, msg: dict):
             # champs remplis, donc une affectation directe effacait la cle
             # secrete des qu'on resauvegardait juste l'App ID.
             existant = dict(SETTINGS["oauth"].get(platform) or {})
-            existant.update({k: v for k, v in keys.items() if v})
+            # Un copier-coller depuis une page web ramene souvent un espace en
+            # tete ou un retour de ligne. La plateforme repond alors que la cle
+            # est invalide, sans que rien a l'ecran laisse deviner la cause.
+            propres = {k: (v.strip() if isinstance(v, str) else v)
+                       for k, v in keys.items()}
+            existant.update({k: v for k, v in propres.items() if v})
             SETTINGS["oauth"][platform] = existant
             save_settings(SETTINGS)
             log.info(f"[OAUTH] cles {platform} enregistrees: {sorted(existant)}")
