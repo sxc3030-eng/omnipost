@@ -1313,8 +1313,14 @@ async def handle_command(ws, msg: dict):
         if platform and keys:
             if "oauth" not in SETTINGS:
                 SETTINGS["oauth"] = {}
-            SETTINGS["oauth"][platform] = keys
+            # Fusionner, jamais remplacer : le formulaire n'envoie que les
+            # champs remplis, donc une affectation directe effacait la cle
+            # secrete des qu'on resauvegardait juste l'App ID.
+            existant = dict(SETTINGS["oauth"].get(platform) or {})
+            existant.update({k: v for k, v in keys.items() if v})
+            SETTINGS["oauth"][platform] = existant
             save_settings(SETTINGS)
+            log.info(f"[OAUTH] cles {platform} enregistrees: {sorted(existant)}")
             await ws.send(json.dumps({"type": "oauth_saved", "platform": platform}))
 
     # ── Analytics ────────────────────────────────────────────────────────

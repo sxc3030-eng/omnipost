@@ -776,7 +776,7 @@ function renderOAuthFields(accounts) {
     el.innerHTML = fields.map(f => `
       <div style="margin-bottom:6px">
         <div style="font-size:9px;color:var(--text3);margin-bottom:2px">${f.l}</div>
-        <input type="${f.t||'text'}" id="oauth-${p}-${f.k}" class="settings-input" style="font-size:11px;padding:5px 8px" placeholder="${f.l}">
+        <input type="${f.t||'text'}" id="oauth-${p}-${f.k}" class="settings-input" style="font-size:11px;padding:5px 8px" placeholder="${f.l}" value="${(((state.settings||{}).oauth||{})[p]||{})[f.k]||''}">
       </div>`).join('') +
       `<button class="btn btn-green" onclick="saveOAuth('${p}')" style="width:100%;justify-content:center;font-size:11px;padding:5px">Sauvegarder</button>`;
   });
