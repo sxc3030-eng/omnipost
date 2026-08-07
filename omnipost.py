@@ -1499,6 +1499,49 @@ def _repondre_http(writer, body: str, content_type: str, cors: str = ""):
 
 
 GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
+TT_TOKEN     = "https://open.tiktokapis.com/v2/oauth/token/"
+
+
+def _tiktok_complete_oauth(platform: str, code: str, callback: str) -> dict:
+    """Echange le code TikTok contre un acces, un refresh et l'open_id."""
+    cfg = SETTINGS.get("oauth", {}).get(platform, {})
+    if not cfg.get("client_key") or not cfg.get("client_secret"):
+        return {"error": "Client Key / Client Secret manquants dans les reglages OAuth"}
+    try:
+        # TikTok attend un corps form-encode, pas du JSON, et un code decode.
+        rep = _post_form(TT_TOKEN, {
+            "client_key": cfg["client_key"], "client_secret": cfg["client_secret"],
+            "code": urllib.parse.unquote(code), "grant_type": "authorization_code",
+            "redirect_uri": callback,
+        }, timeout=30)
+        if rep.get("error"):
+            return {"error": f"{rep.get('error')}: {rep.get('error_description', '')}"}
+        acces = rep.get("access_token")
+        if not acces:
+            return {"error": f"Echange du code refuse: {rep}"}
+
+        nom = ""
+        try:
+            info = _request_json(
+                "https://open.tiktokapis.com/v2/user/info/?fields=display_name",
+                headers={"Authorization": f"Bearer {acces}"}, timeout=20)
+            nom = (((info.get("data") or {}).get("user") or {}).get("display_name")) or ""
+        except Exception as e:               # ne jamais casser la connexion ici
+            log.warning(f"[TIKTOK] nom de compte illisible: {e}")
+
+        return {
+            "connected": True, "platform": platform,
+            "access_token": acces,
+            "refresh_token": rep.get("refresh_token", ""),
+            "open_id": rep.get("open_id", ""),
+            "display_name": nom,
+            "name": nom or PLATFORMS.get(platform, {}).get("name", platform),
+        }
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
 
 
 def _refresh_youtube_token():
@@ -1610,6 +1653,8 @@ async def auth_handler(reader, writer):
                     acc = await asyncio.to_thread(_fb_complete_oauth, platform, code, callback)
                 elif platform == "youtube":
                     acc = await asyncio.to_thread(_google_complete_oauth, platform, code, callback)
+                elif platform == "tiktok":
+                    acc = await asyncio.to_thread(_tiktok_complete_oauth, platform, code, callback)
                 else:
                     acc = {"error": f"Échange de token non implémenté pour {platform}"}
 
