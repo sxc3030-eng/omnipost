@@ -184,11 +184,19 @@ DEFAULT_SETTINGS = {
 
 def load_settings() -> dict:
     if not os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "w") as f:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_SETTINGS, f, indent=2)
         return DEFAULT_SETTINGS.copy()
-    with open(SETTINGS_FILE, "r") as f:
-        s = json.load(f)
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            s = json.load(f)
+    except UnicodeDecodeError:
+        # Fichier ecrit par une version qui ne precisait pas l'encodage : sous
+        # Windows open() retombe sur cp1252. On le relit ainsi une fois, puis
+        # la prochaine sauvegarde le remet en UTF-8.
+        log.warning("[SETTINGS] fichier non-UTF-8, relecture en cp1252")
+        with open(SETTINGS_FILE, "r", encoding="cp1252") as f:
+            s = json.load(f)
     # Merge with defaults for new keys
     for k, v in DEFAULT_SETTINGS.items():
         if k not in s:
@@ -196,7 +204,10 @@ def load_settings() -> dict:
     return s
 
 def save_settings(settings: dict):
-    with open(SETTINGS_FILE, "w") as f:
+    # encoding explicite : sans lui, Windows ecrit en cp1252 et le moindre
+    # accent — nom de Page, « Quebec » — rend le fichier illisible en UTF-8,
+    # tandis qu'un emoji fait echouer la sauvegarde.
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2, ensure_ascii=False)
 
 SETTINGS = load_settings()
