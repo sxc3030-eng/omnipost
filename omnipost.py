@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import base64
 import mimetypes
+import pathlib
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -1660,6 +1661,30 @@ async def auth_handler(reader, writer):
     finally:
         writer.close()
 
+DASHBOARD_FILE = "omnipost_dashboard.html"
+
+
+def ouvrir_dashboard():
+    """Ouvre le tableau de bord au demarrage.
+
+    Il ne s'ouvrait pas tout seul, et un serveur qui tourne sans interface
+    donne l'impression que rien ne demarre. Desactivable par le reglage
+    ouvrir_dashboard.
+    """
+    if not SETTINGS.get("ouvrir_dashboard", True):
+        return
+    chemin = os.path.abspath(DASHBOARD_FILE)
+    if not os.path.isfile(chemin):
+        log.warning(f"[UI] {DASHBOARD_FILE} introuvable a cote de omnipost.py")
+        return
+    try:
+        import webbrowser
+        webbrowser.open(pathlib.Path(chemin).as_uri())
+        log.info(f"[UI] tableau de bord ouvert : {chemin}")
+    except Exception as e:                    # jamais bloquer le demarrage
+        log.warning(f"[UI] ouverture impossible ({e}) — ouvrir {chemin} a la main")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────
 async def main_async():
     # Auth / OAuth callback server
@@ -1672,6 +1697,7 @@ async def main_async():
         async with websockets.serve(ws_handler, "localhost", WS_PORT,
                                     max_size=MAX_UPLOAD_BYTES + 2 * 1024 * 1024):
             log.info(f"[WS] Serveur WebSocket sur ws://localhost:{WS_PORT}")
+            ouvrir_dashboard()
             async with auth_srv:
                 tasks = [scheduler_loop()]
                 if HAS_GENIA:
