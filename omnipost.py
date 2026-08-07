@@ -270,9 +270,13 @@ def get_oauth_url(platform: str) -> str:
         if not client_id:
             return ""
         scope = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
+        # prompt=consent : sans lui, Google ne renvoie le refresh_token qu'a la
+        # toute premiere autorisation. Une reconnexion ulterieure repartirait
+        # sans lui, et l'acces expirerait au bout d'une heure sans recours.
         return (f"https://accounts.google.com/o/oauth2/v2/auth"
                 f"?client_id={client_id}&redirect_uri={urllib.parse.quote(callback)}"
-                f"&response_type=code&scope={urllib.parse.quote(scope)}&access_type=offline")
+                f"&response_type=code&scope={urllib.parse.quote(scope)}"
+                f"&access_type=offline&prompt=consent")
 
     elif platform == "pinterest":
         app_id = cfg.get("app_id", "")
@@ -1493,6 +1497,78 @@ def _repondre_http(writer, body: str, content_type: str, cors: str = ""):
     writer.write(entetes + corps)
 
 
+GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
+
+
+def _refresh_youtube_token():
+    """Rejoue le refresh_token pour obtenir un acces frais.
+
+    Etait appelee dans _post_youtube sur un 401 sans avoir jamais ete
+    definie : la moindre expiration levait un NameError au lieu de renouveler.
+    """
+    cfg = SETTINGS.get("oauth", {}).get("youtube", {})
+    acc = STATE.accounts.get("youtube") or {}
+    refresh = acc.get("refresh_token") or cfg.get("refresh_token", "")
+    if not (refresh and cfg.get("client_id") and cfg.get("client_secret")):
+        log.error("[YOUTUBE] pas de refresh_token — reconnecter la plateforme")
+        return ""
+    try:
+        rep = _post_form(GOOGLE_TOKEN, {
+            "grant_type": "refresh_token", "refresh_token": refresh,
+            "client_id": cfg["client_id"], "client_secret": cfg["client_secret"],
+        }, timeout=30)
+    except urllib.error.HTTPError as e:
+        log.error(f"[YOUTUBE] refus du refresh: {e.read().decode(errors='ignore')[:200]}")
+        return ""
+    jeton = rep.get("access_token", "")
+    if jeton:
+        acc["access_token"] = jeton
+        STATE.accounts["youtube"] = acc
+        SETTINGS["accounts"] = STATE.accounts
+        save_settings(SETTINGS)
+        log.info("[YOUTUBE] acces renouvele")
+    return jeton
+
+
+def _google_complete_oauth(platform: str, code: str, callback: str) -> dict:
+    """Echange le code Google contre un acces et un refresh_token."""
+    cfg = SETTINGS.get("oauth", {}).get(platform, {})
+    if not cfg.get("client_id") or not cfg.get("client_secret"):
+        return {"error": "Client ID / Client Secret manquants dans les reglages OAuth"}
+    try:
+        jetons = _post_form(GOOGLE_TOKEN, {
+            "code": code, "client_id": cfg["client_id"],
+            "client_secret": cfg["client_secret"], "redirect_uri": callback,
+            "grant_type": "authorization_code",
+        }, timeout=30)
+        acces = jetons.get("access_token")
+        if not acces:
+            return {"error": f"Echange du code refuse: {jetons}"}
+
+        nom = ""
+        try:
+            ch = _request_json(
+                "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+                headers={"Authorization": f"Bearer {acces}"}, timeout=20)
+            items = ch.get("items") or []
+            if items:
+                nom = (items[0].get("snippet") or {}).get("title", "")
+        except Exception as e:               # la chaine ne doit pas casser ici
+            log.warning(f"[YOUTUBE] nom de chaine illisible: {e}")
+
+        return {
+            "connected": True, "platform": platform,
+            "access_token": acces,
+            "refresh_token": jetons.get("refresh_token", ""),
+            "channel_name": nom,
+            "name": nom or PLATFORMS.get(platform, {}).get("name", platform),
+        }
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 async def auth_handler(reader, writer):
     """Handles OAuth callbacks from social platforms"""
     try:
@@ -1531,6 +1607,8 @@ async def auth_handler(reader, writer):
                 callback = f"http://localhost:{AUTH_PORT}/oauth/callback/{platform}"
                 if platform in ("facebook", "instagram"):
                     acc = await asyncio.to_thread(_fb_complete_oauth, platform, code, callback)
+                elif platform == "youtube":
+                    acc = await asyncio.to_thread(_google_complete_oauth, platform, code, callback)
                 else:
                     acc = {"error": f"Échange de token non implémenté pour {platform}"}
 
