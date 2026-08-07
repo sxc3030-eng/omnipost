@@ -1449,6 +1449,27 @@ def _fb_complete_oauth(platform: str, code: str, callback: str) -> dict:
         return {"error": str(e)}
 
 
+_CODES_VUS = {}          # code -> corps HTML deja renvoye
+
+
+def _repondre_http(writer, body: str, content_type: str, cors: str = ""):
+    """Reponse HTTP complete.
+
+    Sans Content-Length ni Connection: close, le navigateur ne sait pas ou
+    s'arrete le corps, attend la suite, puis rejoue la requete — et le second
+    appel arrive avec un code OAuth deja consomme.
+    """
+    corps = body.encode("utf-8")
+    entetes = (
+        "HTTP/1.1 200 OK\r\n"
+        f"Content-Type: {content_type}; charset=utf-8\r\n"
+        f"Content-Length: {len(corps)}\r\n"
+        "Connection: close\r\n"
+        f"{cors}\r\n"
+    ).encode("utf-8")
+    writer.write(entetes + corps)
+
+
 async def auth_handler(reader, writer):
     """Handles OAuth callbacks from social platforms"""
     try:
@@ -1467,6 +1488,16 @@ async def auth_handler(reader, writer):
 
             code  = params.get("code", "")
             error = params.get("error", "")
+
+            if code and code in _CODES_VUS:
+                # Un code OAuth ne vaut qu'une fois. Si le navigateur rejoue
+                # l'appel, on rend la meme page plutot que de redemander a
+                # Facebook un echange qu'il refusera.
+                log.info(f"[OAUTH] Code deja traite pour {platform}, rejeu ignore")
+                _repondre_http(writer, _CODES_VUS[code], "text/html", cors)
+                await writer.drain()
+                writer.close()
+                return
 
             if code:
                 log.info(f"[OAUTH] Code reçu pour {platform}")
@@ -1512,11 +1543,15 @@ async def auth_handler(reader, writer):
                     <div style="text-align:center"><h2>❌ Erreur: {error}</h2>
                     <script>window.close();</script></div></body></html>"""
 
-            writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n{cors}\r\n{body}".encode())
+            if code:
+                _CODES_VUS[code] = body
+                if len(_CODES_VUS) > 50:
+                    _CODES_VUS.pop(next(iter(_CODES_VUS)))
+            _repondre_http(writer, body, "text/html", cors)
 
         else:
             body = json.dumps({"status": "OmniPost Auth Server", "version": "1.0.0"})
-            writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{cors}\r\n{body}".encode())
+            _repondre_http(writer, body, "application/json", cors)
 
         await writer.drain()
     except Exception as e:
