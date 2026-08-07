@@ -239,6 +239,9 @@ STATE.analytics = load_analytics()
 # Load persisted social accounts from settings
 STATE.accounts  = SETTINGS.get("accounts", {})
 
+_PKCE = {}          # plateforme -> code_verifier du flux en cours
+
+
 # ── Platform connectors ────────────────────────────────────────────────────
 def get_oauth_url(platform: str) -> str:
     """Returns OAuth authorization URL for a platform"""
@@ -261,10 +264,19 @@ def get_oauth_url(platform: str) -> str:
         client_key = cfg.get("client_key", "")
         if not client_key:
             return ""
+        # TikTok impose PKCE : sans code_challenge, l'ecran d'autorisation
+        # refuse avec « Quelque chose s'est mal passe ». Le verifieur est
+        # conserve pour etre renvoye lors de l'echange du code.
+        verifieur = secrets.token_urlsafe(64)[:96]
+        _PKCE[platform] = verifieur
+        defi = base64.urlsafe_b64encode(
+            hashlib.sha256(verifieur.encode("ascii")).digest()).decode().rstrip("=")
         return (f"https://www.tiktok.com/v2/auth/authorize/"
                 f"?client_key={client_key}&response_type=code"
                 f"&scope=user.info.basic,video.publish"
-                f"&redirect_uri={urllib.parse.quote(callback)}")
+                f"&redirect_uri={urllib.parse.quote(callback)}"
+                f"&state={secrets.token_urlsafe(16)}"
+                f"&code_challenge={defi}&code_challenge_method=S256")
 
     elif platform == "youtube":
         client_id = cfg.get("client_id", "")
@@ -1513,6 +1525,7 @@ def _tiktok_complete_oauth(platform: str, code: str, callback: str) -> dict:
             "client_key": cfg["client_key"], "client_secret": cfg["client_secret"],
             "code": urllib.parse.unquote(code), "grant_type": "authorization_code",
             "redirect_uri": callback,
+            "code_verifier": _PKCE.get(platform, ""),
         }, timeout=30)
         if rep.get("error"):
             return {"error": f"{rep.get('error')}: {rep.get('error_description', '')}"}
