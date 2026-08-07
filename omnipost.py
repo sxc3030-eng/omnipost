@@ -325,8 +325,9 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
     return {"status": "error", "error": "Unknown platform"}
 
 # ── Media / HTTP helpers ───────────────────────────────────────────────────
-FB_API      = "https://graph.facebook.com/v18.0"
-VIDEO_EXTS  = (".mp4", ".mov", ".webm", ".m4v")
+FB_API       = "https://graph.facebook.com/v18.0"
+FB_VIDEO_API = "https://graph-video.facebook.com/v18.0"   # video uploads use this host
+VIDEO_EXTS   = (".mp4", ".mov", ".webm", ".m4v")
 
 
 def _is_remote(item: str) -> bool:
@@ -420,7 +421,26 @@ async def _post_facebook(token: str, text: str, media: list, page_id: str = None
         else:
             page_token = token  # caller already gave us the page token
 
+        videos = [m for m in (media or []) if _is_video(m)]
         photos = [m for m in (media or []) if not _is_video(m)]
+
+        # ── Video wins: the pipeline renders a 9:16 clip and it used to be
+        # filtered out here, so every automated post went out as bare text.
+        if videos:
+            item = videos[0]
+            fields = {"description": text, "access_token": page_token}
+            if _is_remote(item):
+                result = _post_form(f"{FB_VIDEO_API}/{page_id}/videos",
+                                    {**fields, "file_url": item}, timeout=300)
+            else:
+                path = _local_path(item)
+                if not path:
+                    return {"status": "error", "error": _media_error(item)}
+                result = _upload_file(f"{FB_VIDEO_API}/{page_id}/videos", fields,
+                                      path, "source", timeout=600)
+            vid = result.get("id", "")
+            return {"status": "published", "id": vid,
+                    "url": f"https://www.facebook.com/{page_id}/videos/{vid}" if vid else ""}
 
         # ── No media: plain text post on the feed.
         if not photos:
@@ -717,18 +737,74 @@ def _oauth1_header(method: str, url: str, cfg: dict, signed_params: dict = None)
     return "OAuth " + ", ".join(f'{_pe(k)}="{_pe(v)}"' for k, v in sorted(oauth.items()))
 
 
+X_UPLOAD = "https://upload.twitter.com/1.1/media/upload.json"
+
+
 def _twitter_upload_media(cfg: dict, path: str) -> Optional[str]:
     """Upload one image to X and return its media_id."""
-    url = "https://upload.twitter.com/1.1/media/upload.json"
     with open(path, "rb") as fh:
         blob = fh.read()
     ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
     body, content_type = _multipart({}, [("media", os.path.basename(path), blob, ctype)])
-    result = _request_json(url, data=body, method="POST", timeout=120, headers={
+    result = _request_json(X_UPLOAD, data=body, method="POST", timeout=120, headers={
         "Content-Type": content_type,
-        "Authorization": _oauth1_header("POST", url, cfg),
+        "Authorization": _oauth1_header("POST", X_UPLOAD, cfg),
     })
     return result.get("media_id_string")
+
+
+def _twitter_upload_video(cfg: dict, path: str) -> Optional[str]:
+    """Chunked INIT/APPEND/FINALIZE upload — the only way X accepts video."""
+    size = os.path.getsize(path)
+    ctype = mimetypes.guess_type(path)[0] or "video/mp4"
+
+    def form(fields, timeout=60):
+        # Form-encoded bodies are part of the OAuth signature base.
+        return _request_json(X_UPLOAD, data=urllib.parse.urlencode(fields).encode(),
+                             method="POST", timeout=timeout, headers={
+                                 "Content-Type": "application/x-www-form-urlencoded",
+                                 "Authorization": _oauth1_header("POST", X_UPLOAD, cfg, fields),
+                             })
+
+    init = form({"command": "INIT", "total_bytes": str(size),
+                 "media_type": ctype, "media_category": "tweet_video"})
+    media_id = init.get("media_id_string")
+    if not media_id:
+        return None
+
+    CHUNK = 4 * 1024 * 1024
+    with open(path, "rb") as fh:
+        index = 0
+        while True:
+            chunk = fh.read(CHUNK)
+            if not chunk:
+                break
+            # APPEND is multipart, so its body stays out of the signature.
+            body, content_type = _multipart(
+                {"command": "APPEND", "media_id": media_id, "segment_index": str(index)},
+                [("media", "chunk", chunk, "application/octet-stream")])
+            _request_json(X_UPLOAD, data=body, method="POST", timeout=300, headers={
+                "Content-Type": content_type,
+                "Authorization": _oauth1_header("POST", X_UPLOAD, cfg),
+            })
+            index += 1
+
+    done = form({"command": "FINALIZE", "media_id": media_id}, timeout=120)
+
+    # X transcodes asynchronously; attaching the id too early fails the post.
+    info = done.get("processing_info") or {}
+    deadline = time.time() + 300
+    while info.get("state") in ("pending", "in_progress") and time.time() < deadline:
+        time.sleep(max(1, int(info.get("check_after_secs", 5))))
+        params = {"command": "STATUS", "media_id": media_id}
+        status = _request_json(X_UPLOAD + "?" + urllib.parse.urlencode(params), timeout=30,
+                               headers={"Authorization": _oauth1_header(
+                                   "GET", X_UPLOAD, cfg, params)})
+        info = status.get("processing_info") or {}
+    if info.get("state") == "failed":
+        log.error(f"[X] transcodage échoué: {info.get('error')}")
+        return None
+    return media_id
 
 
 async def _post_twitter(post: dict, text: str, media: list) -> dict:
@@ -747,17 +823,18 @@ async def _post_twitter(post: dict, text: str, media: list) -> dict:
 
         payload = {"text": text[:280]}
 
-        # Images only: video needs the chunked INIT/APPEND/FINALIZE flow.
+        # A tweet carries either one video or up to four images, never both.
         media_ids = []
-        for item in (media or [])[:4]:
-            if _is_video(item):
-                continue
+        videos = [m for m in (media or []) if _is_video(m)]
+        chosen = videos[:1] if videos else (media or [])[:4]
+        for item in chosen:
             path = _local_path(item)
             if not path:
                 if _is_remote(item):
                     continue  # X has no fetch-by-URL ingest; skip remote entries
                 return {"status": "error", "error": _media_error(item)}
-            mid = _twitter_upload_media(cfg, path)
+            mid = (await asyncio.to_thread(_twitter_upload_video, cfg, path) if _is_video(item)
+                   else await asyncio.to_thread(_twitter_upload_media, cfg, path))
             if mid:
                 media_ids.append(mid)
         if media_ids:
