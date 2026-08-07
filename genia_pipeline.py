@@ -60,8 +60,14 @@ DEFAULT_GENIA = {
     # Drip
     "drip_per_day":     1,
     "drip_hour":        14,          # 14:00 local
+    "drip_days":        [],          # weekday numbers, Mon=0..Sun=6; [] = every day
     "drip_seconds":     600,         # check every 10 min
     "auto_publish":     True,        # if false, drip just stages without publishing
+    # Two-phase publishing: host the clip somewhere public, then share that URL
+    # so the networks render a preview card pointing back at us.
+    "heberger_dabord":  False,       # off by default — existing setups unchanged
+    "hebergeurs":       ["youtube"],
+    "partageurs":       ["facebook", "twitter"],   # platforms that can show a link card
 }
 
 INGEST_STATE_FILE = "pipeline_ingest_state.json"
@@ -177,12 +183,17 @@ def _truncate(s: str, n: int) -> str:
 
 def build_captions(post: dict, cfg: dict) -> dict:
     """Return {platform: caption} for all configured platforms."""
-    artist  = (post.get("caption") or "").strip().split(chr(10))[0][:60].strip()
     caption = (post.get("caption") or "").strip()
     pid     = post.get("id", "")
 
-    header = f"🤘 {artist}\n\n" if artist else ""
-    body   = caption
+    # The first line is the headline. It used to be copied into the header
+    # while the body still carried the whole caption, so every published post
+    # opened with the same sentence twice — lift it out of the body instead.
+    lines    = caption.split(chr(10))
+    headline = lines[0].strip()
+    body     = chr(10).join(lines[1:]).strip()
+
+    header = f"🤘 {headline}\n\n" if headline else ""
     link   = f"\n\n👉 {cfg.get('credit_text', '')}"
     if pid:
         link += f"\nhttps://genia.social/post/{pid}"
@@ -591,6 +602,47 @@ def _build_omnipost_post(meta: dict) -> dict:
     }
 
 
+def _url_hebergement(results, hebergeurs):
+    """First public URL returned by a hosting platform, if any."""
+    for p in hebergeurs:
+        r = (results or {}).get(p) or {}
+        if r.get("status") == "published":
+            url = r.get("shorts_url") or r.get("url") or ""
+            if url:
+                return url
+    return ""
+
+
+async def _publier_en_deux_temps(op_post, cfg, publish_post_fn):
+    """Host the clip first, then share the URL it produced.
+
+    Instagram is deliberately left in the first phase: it cannot post a link at
+    all, and it ingests media by URL rather than following a watch page, so a
+    YouTube address would be useless to it.
+    """
+    hebergeurs = list(cfg.get("hebergeurs") or [])
+    partageurs = list(cfg.get("partageurs") or [])
+    plateformes = list(op_post.get("platforms") or [])
+
+    partage = [p for p in plateformes if p in partageurs]
+    premier = [p for p in plateformes if p not in partage]
+
+    results = {}
+    if premier:
+        results.update(await publish_post_fn({**op_post, "platforms": premier}) or {})
+
+    if not partage:
+        return results
+
+    lien = _url_hebergement(results, hebergeurs) or op_post.get("link") or ""
+    relais = {**op_post, "platforms": partage, "link": lien}
+    if lien:
+        # Facebook only builds a card when the post carries no media of its own.
+        relais["media"] = []
+    results.update(await publish_post_fn(relais) or {})
+    return results
+
+
 async def _drip_loop(get_settings, omnipost_state, save_posts_fn, publish_post_fn,
                     broadcast_fn, add_notification_fn):
     log.info("[pipeline] drip loop started")
@@ -611,6 +663,12 @@ async def _drip_loop(get_settings, omnipost_state, save_posts_fn, publish_post_f
             # Check if it's time and we haven't hit daily quota
             target_hour = int(cfg.get("drip_hour", 14))
             per_day    = int(cfg.get("drip_per_day", 1))
+
+            # Restrict to chosen weekdays — [4] publishes every Friday only.
+            drip_days = cfg.get("drip_days") or []
+            if drip_days and now.weekday() not in [int(d) for d in drip_days]:
+                await asyncio.sleep(delay)
+                continue
 
             if now.hour < target_hour:
                 await asyncio.sleep(delay)
@@ -638,7 +696,15 @@ async def _drip_loop(get_settings, omnipost_state, save_posts_fn, publish_post_f
                     save_posts_fn()
                     await broadcast_fn({"type": "post_status", "id": op_post["id"], "status": "publishing"})
                     try:
-                        results = await publish_post_fn(op_post)
+                        if cfg.get("heberger_dabord"):
+                            results = await _publier_en_deux_temps(
+                                op_post, cfg, publish_post_fn)
+                            lien = _url_hebergement(results, cfg.get("hebergeurs") or [])
+                            if lien:
+                                op_post["link"] = lien
+                                meta["lien_heberge"] = lien
+                        else:
+                            results = await publish_post_fn(op_post)
                         op_post["status"] = "published"
                         op_post["published_at"] = datetime.now().isoformat()
                         op_post["results"] = results

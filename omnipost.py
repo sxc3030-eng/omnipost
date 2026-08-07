@@ -14,9 +14,13 @@ import time
 import threading
 import secrets
 import hashlib
+import hmac
 import base64
+import mimetypes
+import pathlib
 import urllib.request
 import urllib.parse
+import urllib.error
 import subprocess
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
@@ -181,11 +185,19 @@ DEFAULT_SETTINGS = {
 
 def load_settings() -> dict:
     if not os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "w") as f:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_SETTINGS, f, indent=2)
         return DEFAULT_SETTINGS.copy()
-    with open(SETTINGS_FILE, "r") as f:
-        s = json.load(f)
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            s = json.load(f)
+    except UnicodeDecodeError:
+        # Fichier ecrit par une version qui ne precisait pas l'encodage : sous
+        # Windows open() retombe sur cp1252. On le relit ainsi une fois, puis
+        # la prochaine sauvegarde le remet en UTF-8.
+        log.warning("[SETTINGS] fichier non-UTF-8, relecture en cp1252")
+        with open(SETTINGS_FILE, "r", encoding="cp1252") as f:
+            s = json.load(f)
     # Merge with defaults for new keys
     for k, v in DEFAULT_SETTINGS.items():
         if k not in s:
@@ -193,7 +205,10 @@ def load_settings() -> dict:
     return s
 
 def save_settings(settings: dict):
-    with open(SETTINGS_FILE, "w") as f:
+    # encoding explicite : sans lui, Windows ecrit en cp1252 et le moindre
+    # accent — nom de Page, « Quebec » — rend le fichier illisible en UTF-8,
+    # tandis qu'un emoji fait echouer la sauvegarde.
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2, ensure_ascii=False)
 
 SETTINGS = load_settings()
@@ -234,7 +249,10 @@ def get_oauth_url(platform: str) -> str:
         app_id = cfg.get("app_id", "")
         if not app_id:
             return ""
-        scope = "pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish"
+        # pages_show_list is what makes /me/accounts return anything at all —
+        # without it the page lookup comes back empty and nothing can publish.
+        scope = ("pages_show_list,pages_manage_posts,pages_read_engagement,"
+                 "business_management,instagram_basic,instagram_content_publish")
         return (f"https://www.facebook.com/v18.0/dialog/oauth"
                 f"?client_id={app_id}&redirect_uri={urllib.parse.quote(callback)}"
                 f"&scope={scope}&response_type=code")
@@ -253,9 +271,13 @@ def get_oauth_url(platform: str) -> str:
         if not client_id:
             return ""
         scope = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
+        # prompt=consent : sans lui, Google ne renvoie le refresh_token qu'a la
+        # toute premiere autorisation. Une reconnexion ulterieure repartirait
+        # sans lui, et l'acces expirerait au bout d'une heure sans recours.
         return (f"https://accounts.google.com/o/oauth2/v2/auth"
                 f"?client_id={client_id}&redirect_uri={urllib.parse.quote(callback)}"
-                f"&response_type=code&scope={urllib.parse.quote(scope)}&access_type=offline")
+                f"&response_type=code&scope={urllib.parse.quote(scope)}"
+                f"&access_type=offline&prompt=consent")
 
     elif platform == "pinterest":
         app_id = cfg.get("app_id", "")
@@ -277,7 +299,13 @@ async def publish_post(post: dict) -> dict:
         try:
             result = await _publish_to_platform(platform, post)
             results[platform] = result
-            log.info(f"[PUBLISH] {platform}: {result.get('status')}")
+            # Sans le motif, un « error » dans le journal n'apprend rien et il
+            # faut aller fouiller omnipost_posts.json pour savoir quoi corriger.
+            if result.get("status") == "published":
+                log.info(f"[PUBLISH] {platform}: publie {result.get('url') or result.get('id') or ''}")
+            else:
+                log.error(f"[PUBLISH] {platform}: {result.get('status')} — "
+                          f"{result.get('error') or result.get('message') or 'sans motif'}")
         except Exception as e:
             results[platform] = {"status": "error", "error": str(e)}
             log.error(f"[PUBLISH] {platform} error: {e}")
@@ -290,15 +318,25 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
         return {"status": "error", "error": "Not connected"}
 
     token = acc.get("access_token", "")
-    content = post.get("content", "")
-    hashtags = " ".join(post.get("hashtags", []))
-    full_text = f"{content}\n\n{hashtags}".strip()
     media = post.get("media", [])
 
+    # The pipeline builds a caption per platform, then only the primary one was
+    # ever published — every network got the Instagram wording. Prefer the
+    # platform's own caption, which already carries its link and hashtags.
+    per_platform = (post.get("captions") or {}).get(platform)
+    if per_platform:
+        full_text = per_platform.strip()
+    else:
+        content = post.get("content", "")
+        hashtags = " ".join(post.get("hashtags", []))
+        full_text = f"{content}\n\n{hashtags}".strip()
+
     if platform == "facebook":
-        return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"))
+        return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"),
+                                    link=post.get("link", ""))
     elif platform == "instagram":
-        return await _post_instagram(token, full_text, media)
+        return await _post_instagram(token, full_text, media,
+                                     ig_id=acc.get("ig_id"), page_id=acc.get("page_id"))
     elif platform == "tiktok":
         return await _post_tiktok(token, full_text, media)
     elif platform == "youtube":
@@ -306,20 +344,99 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
     elif platform == "pinterest":
         return await _post_pinterest(token, full_text, media, post.get("link", ""))
     elif platform == "twitter":
-        return await _post_twitter(post, full_text, media)
+        return await _post_twitter(post, full_text, media, link=post.get("link", ""))
     return {"status": "error", "error": "Unknown platform"}
 
-async def _post_facebook(token: str, text: str, media: list, page_id: str = None) -> dict:
-    """Post to Facebook page. Uses page_id if provided (token=PAGE token),
-    otherwise looks up via /me/accounts (token=USER token)."""
+# ── Media / HTTP helpers ───────────────────────────────────────────────────
+FB_API       = "https://graph.facebook.com/v18.0"
+FB_VIDEO_API = "https://graph-video.facebook.com/v18.0"   # video uploads use this host
+VIDEO_EXTS   = (".mp4", ".mov", ".webm", ".m4v")
+
+
+def _is_remote(item: str) -> bool:
+    return isinstance(item, str) and item.lower().startswith(("http://", "https://"))
+
+
+def _is_video(item: str) -> bool:
+    return str(item).split("?")[0].lower().endswith(VIDEO_EXTS)
+
+
+def _local_path(item: str) -> Optional[str]:
+    """Resolve a media entry to a readable local file, or None.
+
+    The dashboard used to hand us `blob:` URLs, which only exist inside the
+    browser tab. Those are rejected here rather than failing deep inside an
+    API call with an unreadable error.
+    """
+    if not isinstance(item, str) or _is_remote(item) or item.startswith("blob:"):
+        return None
+    for cand in (item, os.path.join(MEDIA_DIR, os.path.basename(item))):
+        if os.path.isfile(cand):
+            return cand
+    return None
+
+
+def _media_error(item: str) -> str:
+    if isinstance(item, str) and item.startswith("blob:"):
+        return ("Media was not uploaded to the backend (blob: URL). "
+                "Re-attach the file in the dashboard so it is saved to disk first.")
+    return f"Media not found: {item}"
+
+
+def _multipart(fields: dict, files: list) -> tuple:
+    """Build a multipart/form-data body. files: [(name, filename, bytes, ctype)]"""
+    boundary = "----OmniPost" + secrets.token_hex(16)
+    body = bytearray()
+    for k, v in fields.items():
+        body += f"--{boundary}\r\n".encode()
+        body += f'Content-Disposition: form-data; name="{k}"\r\n\r\n'.encode()
+        body += f"{v}\r\n".encode()
+    for name, filename, blob, ctype in files:
+        body += f"--{boundary}\r\n".encode()
+        body += (f'Content-Disposition: form-data; name="{name}"; '
+                 f'filename="{filename}"\r\n').encode()
+        body += f"Content-Type: {ctype}\r\n\r\n".encode()
+        body += blob + b"\r\n"
+    body += f"--{boundary}--\r\n".encode()
+    return bytes(body), f"multipart/form-data; boundary={boundary}"
+
+
+def _request_json(url: str, data=None, headers=None, method="GET", timeout=30) -> dict:
+    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read().decode(errors="ignore")
+    return json.loads(raw) if raw.strip() else {}
+
+
+def _post_form(url: str, fields: dict, timeout=30) -> dict:
+    return _request_json(url, data=urllib.parse.urlencode(fields).encode(),
+                         method="POST", timeout=timeout)
+
+
+def _upload_file(url: str, fields: dict, path: str, field_name: str, timeout=120) -> dict:
+    with open(path, "rb") as fh:
+        blob = fh.read()
+    ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    body, content_type = _multipart(fields, [(field_name, os.path.basename(path), blob, ctype)])
+    return _request_json(url, data=body, headers={"Content-Type": content_type},
+                         method="POST", timeout=timeout)
+
+
+def _http_error(e: urllib.error.HTTPError) -> dict:
+    return {"status": "error", "error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+
+
+async def _post_facebook(token: str, text: str, media: list, page_id: str = None,
+                         link: str = "") -> dict:
+    """Post to a Facebook page — link card, video, photo, album or plain text.
+
+    Uses page_id if provided (token = PAGE token), otherwise looks it up via
+    /me/accounts (token = USER token).
+    """
     try:
         # If page_id not provided, lookup via user token
         if not page_id:
-            req = urllib.request.Request(
-                f"https://graph.facebook.com/v18.0/me/accounts?access_token={token}"
-            )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                pages = json.loads(r.read().decode())
+            pages = _request_json(f"{FB_API}/me/accounts?access_token={token}", timeout=10)
             if not pages.get("data"):
                 return {"status": "error", "error": "No pages found"}
             page = pages["data"][0]
@@ -328,67 +445,255 @@ async def _post_facebook(token: str, text: str, media: list, page_id: str = None
         else:
             page_token = token  # caller already gave us the page token
 
-        data = {"message": text, "access_token": page_token}
-        payload = urllib.parse.urlencode(data).encode()
-        req = urllib.request.Request(
-            f"https://graph.facebook.com/v18.0/{page_id}/feed",
-            data=payload, method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            result = json.loads(r.read().decode())
-        return {"status": "published", "id": result.get("id"),
-                "url": f"https://www.facebook.com/{result.get('id', '').replace('_', '/posts/')}"}
+        videos = [m for m in (media or []) if _is_video(m)]
+        photos = [m for m in (media or []) if not _is_video(m)]
+
+        # ── A link with no media of its own: let Facebook build the preview
+        # card from the destination's Open Graph tags. Sending the URL only in
+        # the message body gives a bare text post with no thumbnail.
+        if link and not videos and not photos:
+            result = _post_form(f"{FB_API}/{page_id}/feed",
+                                {"message": text, "link": link,
+                                 "access_token": page_token}, timeout=60)
+            post_id = result.get("post_id") or result.get("id", "")
+            return {"status": "published", "id": post_id,
+                    "url": f"https://www.facebook.com/{post_id.replace('_', '/posts/')}"}
+
+        # ── Video wins: the pipeline renders a 9:16 clip and it used to be
+        # filtered out here, so every automated post went out as bare text.
+        if videos:
+            item = videos[0]
+            fields = {"description": text, "access_token": page_token}
+            if _is_remote(item):
+                result = _post_form(f"{FB_VIDEO_API}/{page_id}/videos",
+                                    {**fields, "file_url": item}, timeout=300)
+            else:
+                path = _local_path(item)
+                if not path:
+                    return {"status": "error", "error": _media_error(item)}
+                result = _upload_file(f"{FB_VIDEO_API}/{page_id}/videos", fields,
+                                      path, "source", timeout=600)
+            vid = result.get("id", "")
+            return {"status": "published", "id": vid,
+                    "url": f"https://www.facebook.com/{page_id}/videos/{vid}" if vid else ""}
+
+        # ── No media: plain text post on the feed.
+        if not photos:
+            result = _post_form(f"{FB_API}/{page_id}/feed",
+                                {"message": text, "access_token": page_token})
+
+        # ── One photo: /photos takes the caption directly.
+        elif len(photos) == 1:
+            item = photos[0]
+            if _is_remote(item):
+                result = _post_form(f"{FB_API}/{page_id}/photos",
+                                    {"url": item, "caption": text,
+                                     "access_token": page_token}, timeout=60)
+            else:
+                path = _local_path(item)
+                if not path:
+                    return {"status": "error", "error": _media_error(item)}
+                result = _upload_file(f"{FB_API}/{page_id}/photos",
+                                      {"caption": text, "access_token": page_token},
+                                      path, "source")
+
+        # ── Several photos: upload each unpublished, then attach them to one post.
+        else:
+            media_fbids = []
+            for item in photos[:10]:
+                fields = {"published": "false", "access_token": page_token}
+                if _is_remote(item):
+                    up = _post_form(f"{FB_API}/{page_id}/photos",
+                                    {**fields, "url": item}, timeout=60)
+                else:
+                    path = _local_path(item)
+                    if not path:
+                        return {"status": "error", "error": _media_error(item)}
+                    up = _upload_file(f"{FB_API}/{page_id}/photos", fields, path, "source")
+                if up.get("id"):
+                    media_fbids.append({"media_fbid": up["id"]})
+            if not media_fbids:
+                return {"status": "error", "error": "No photo could be uploaded"}
+            result = _post_form(f"{FB_API}/{page_id}/feed", {
+                "message": text,
+                "attached_media": json.dumps(media_fbids),
+                "access_token": page_token,
+            }, timeout=60)
+
+        post_id = result.get("post_id") or result.get("id", "")
+        return {"status": "published", "id": post_id,
+                "url": f"https://www.facebook.com/{post_id.replace('_', '/posts/')}"}
     except urllib.error.HTTPError as e:
-        return {"status": "error", "error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:200]}"}
+        return _http_error(e)
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-async def _post_instagram(token: str, caption: str, media: list) -> dict:
+async def _post_instagram(token: str, caption: str, media: list,
+                          ig_id: str = None, page_id: str = None) -> dict:
+    """Publish a photo or reel to an Instagram Business account.
+
+    Instagram's Content Publishing API only ingests media it can fetch itself,
+    so the entry must be a public http(s) URL — a local file can never work.
+    """
     try:
-        # Instagram requires a media upload first
         if not media:
             return {"status": "error", "error": "Instagram requires at least one image/video"}
-        # Get IG business account
-        req = urllib.request.Request(
-            f"https://graph.facebook.com/v18.0/me?fields=instagram_business_account&access_token={token}"
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = json.loads(r.read().decode())
-        ig_id = data.get("instagram_business_account", {}).get("id")
+
+        item = media[0]
+        if not _is_remote(item):
+            return {"status": "error", "error": (
+                "Instagram only accepts a publicly reachable https URL, not a local file. "
+                "Host the media (e.g. upload it to genia.social) and use that URL."
+            )}
+
+        # instagram_business_account is a field on the Page, not on /me —
+        # querying /me always came back empty.
         if not ig_id:
-            return {"status": "error", "error": "No Instagram Business account linked"}
-        # Step 1: Create media container
-        media_url = media[0] if media else ""
-        payload = urllib.parse.urlencode({
-            "image_url": media_url, "caption": caption, "access_token": token
-        }).encode()
-        req = urllib.request.Request(
-            f"https://graph.facebook.com/v18.0/{ig_id}/media",
-            data=payload, method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            container = json.loads(r.read().decode())
+            if not page_id:
+                return {"status": "error",
+                        "error": "Instagram not connected — reconnect it in the dashboard"}
+            data = _request_json(f"{FB_API}/{page_id}?" + urllib.parse.urlencode({
+                "fields": "instagram_business_account", "access_token": token}), timeout=15)
+            ig_id = (data.get("instagram_business_account") or {}).get("id")
+        if not ig_id:
+            return {"status": "error", "error": "No Instagram Business account linked to the Page"}
+
+        # Step 1: create the media container
+        fields = {"caption": caption, "access_token": token}
+        if _is_video(item):
+            fields.update({"media_type": "REELS", "video_url": item})
+        else:
+            fields["image_url"] = item
+        container = _post_form(f"{FB_API}/{ig_id}/media", fields, timeout=60)
         container_id = container.get("id")
-        # Step 2: Publish
-        payload2 = urllib.parse.urlencode({
-            "creation_id": container_id, "access_token": token
-        }).encode()
-        req2 = urllib.request.Request(
-            f"https://graph.facebook.com/v18.0/{ig_id}/media_publish",
-            data=payload2, method="POST"
-        )
-        with urllib.request.urlopen(req2, timeout=15) as r:
-            result = json.loads(r.read().decode())
+        if not container_id:
+            return {"status": "error", "error": f"Container not created: {container}"}
+
+        # Step 2: wait for Instagram to finish ingesting it. Publishing a
+        # container that is still IN_PROGRESS fails with an opaque error, and
+        # reels routinely take tens of seconds.
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            state = _request_json(
+                f"{FB_API}/{container_id}?fields=status_code,status&access_token={token}",
+                timeout=15)
+            code = state.get("status_code")
+            if code == "FINISHED":
+                break
+            if code in ("ERROR", "EXPIRED"):
+                return {"status": "error",
+                        "error": f"Media processing {code}: {state.get('status', '')}"}
+            await asyncio.sleep(5)
+        else:
+            return {"status": "error", "error": "Timed out waiting for Instagram to process the media"}
+
+        # Step 3: publish
+        result = _post_form(f"{FB_API}/{ig_id}/media_publish",
+                            {"creation_id": container_id, "access_token": token}, timeout=60)
         return {"status": "published", "id": result.get("id")}
+    except urllib.error.HTTPError as e:
+        return _http_error(e)
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+TT_API    = "https://open.tiktokapis.com/v2"
+TT_CHUNK  = 32 * 1024 * 1024      # TikTok wants 5–64 MB per chunk
+TT_SINGLE = 64 * 1024 * 1024      # below this the file goes up in one piece
+
+
+def _tiktok_upload(upload_url: str, path: str, size: int, chunk: int, total: int):
+    """PUT each chunk with the Content-Range TikTok expects."""
+    with open(path, "rb") as fh:
+        for i in range(total):
+            start = i * chunk
+            # The last chunk absorbs the remainder rather than leaving a runt
+            # below TikTok's 5 MB floor.
+            length = (size - start) if i == total - 1 else chunk
+            fh.seek(start)
+            blob = fh.read(length)
+            req = urllib.request.Request(upload_url, data=blob, method="PUT", headers={
+                "Content-Type": "video/mp4",
+                "Content-Length": str(len(blob)),
+                "Content-Range": f"bytes {start}-{start + len(blob) - 1}/{size}",
+            })
+            with urllib.request.urlopen(req, timeout=600):
+                pass
+
+
 async def _post_tiktok(token: str, text: str, media: list) -> dict:
+    """Publish a video through the Content Posting API.
+
+    Three steps: init returns an upload URL, the file is PUT in chunks, then
+    the publish status is polled. Previously this returned "manual" and posted
+    nothing, while tiktok sat in the pipeline's default platform list.
+    """
     try:
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        # TikTok video upload is multi-step
-        # For now return instructions
-        return {"status": "manual", "message": "TikTok requires video upload — use TikTok Creator Portal"}
+        videos = [m for m in (media or []) if _is_video(m)]
+        if not videos:
+            return {"status": "error", "error": "TikTok requires a video file"}
+        item = videos[0]
+        cfg = SETTINGS.get("oauth", {}).get("tiktok", {})
+        privacy = cfg.get("privacy_level") or "PUBLIC_TO_EVERYONE"
+        headers = {"Authorization": f"Bearer {token}",
+                   "Content-Type": "application/json; charset=UTF-8"}
+        post_info = {"title": (text or "")[:2200], "privacy_level": privacy}
+
+        if _is_remote(item):
+            source_info = {"source": "PULL_FROM_URL", "video_url": item}
+            path = size = chunk = total = None
+        else:
+            path = _local_path(item)
+            if not path:
+                return {"status": "error", "error": _media_error(item)}
+            size = os.path.getsize(path)
+            if size <= TT_SINGLE:
+                chunk, total = size, 1
+            else:
+                chunk = TT_CHUNK
+                total = max(1, size // chunk)
+            source_info = {"source": "FILE_UPLOAD", "video_size": size,
+                           "chunk_size": chunk, "total_chunk_count": total}
+
+        init = await asyncio.to_thread(
+            _request_json, f"{TT_API}/post/publish/video/init/",
+            json.dumps({"post_info": post_info, "source_info": source_info}).encode(),
+            headers, "POST", 60)
+        err = (init.get("error") or {})
+        if err.get("code") not in (None, "ok"):
+            hint = ""
+            if "privacy" in str(err.get("message", "")).lower():
+                hint = (" — une app non auditée par TikTok ne peut publier "
+                        "qu'en SELF_ONLY ; règle privacy_level en conséquence.")
+            return {"status": "error", "error": f"{err.get('message') or err.get('code')}{hint}"}
+        data = init.get("data") or {}
+        publish_id = data.get("publish_id")
+        if not publish_id:
+            return {"status": "error", "error": f"init sans publish_id: {init}"}
+
+        if path:
+            await asyncio.to_thread(_tiktok_upload, data.get("upload_url"),
+                                    path, size, chunk, total)
+
+        # TikTok processes asynchronously; report only once it is really out.
+        deadline = time.time() + 300
+        etat = "PROCESSING"
+        while time.time() < deadline:
+            st = await asyncio.to_thread(
+                _request_json, f"{TT_API}/post/publish/status/fetch/",
+                json.dumps({"publish_id": publish_id}).encode(), headers, "POST", 30)
+            etat = ((st.get("data") or {}).get("status") or "").upper()
+            if etat in ("PUBLISH_COMPLETE", "FAILED"):
+                break
+            await asyncio.sleep(5)
+
+        if etat == "FAILED":
+            return {"status": "error", "error": f"TikTok a rejeté la publication ({publish_id})"}
+        if etat != "PUBLISH_COMPLETE":
+            return {"status": "pending", "id": publish_id,
+                    "error": "toujours en traitement chez TikTok après 5 min"}
+        return {"status": "published", "id": publish_id}
+    except urllib.error.HTTPError as e:
+        return _http_error(e)
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -530,21 +835,170 @@ async def _post_pinterest(token: str, description: str, media: list, link: str) 
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-async def _post_twitter(post: dict, text: str, media: list) -> dict:
+def _pe(value) -> str:
+    """Percent-encode per RFC 5849 §3.6."""
+    return urllib.parse.quote(str(value), safe="~")
+
+
+def _oauth1_header(method: str, url: str, cfg: dict, signed_params: dict = None) -> str:
+    """OAuth 1.0a user-context Authorization header (HMAC-SHA1).
+
+    Only oauth_* and query parameters are signed. Bodies that are not
+    form-encoded — JSON, multipart — are excluded from the signature base,
+    which is what X expects for /2/tweets and media/upload.
+    """
+    oauth = {
+        "oauth_consumer_key":     cfg.get("api_key", ""),
+        "oauth_nonce":            secrets.token_hex(16),
+        "oauth_signature_method": "HMAC-SHA1",
+        "oauth_timestamp":        str(int(time.time())),
+        "oauth_token":            cfg.get("access_token", ""),
+        "oauth_version":          "1.0",
+    }
+    to_sign = {**oauth, **(signed_params or {})}
+    param_str = "&".join(f"{_pe(k)}={_pe(v)}" for k, v in sorted(to_sign.items()))
+    base = f"{method.upper()}&{_pe(url)}&{_pe(param_str)}"
+    key = f'{_pe(cfg.get("api_secret", ""))}&{_pe(cfg.get("access_token_secret", ""))}'.encode()
+    oauth["oauth_signature"] = base64.b64encode(
+        hmac.new(key, base.encode(), hashlib.sha1).digest()).decode()
+    return "OAuth " + ", ".join(f'{_pe(k)}="{_pe(v)}"' for k, v in sorted(oauth.items()))
+
+
+X_UPLOAD = "https://upload.twitter.com/1.1/media/upload.json"
+
+
+def _twitter_upload_media(cfg: dict, path: str) -> Optional[str]:
+    """Upload one image to X and return its media_id."""
+    with open(path, "rb") as fh:
+        blob = fh.read()
+    ctype = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    body, content_type = _multipart({}, [("media", os.path.basename(path), blob, ctype)])
+    result = _request_json(X_UPLOAD, data=body, method="POST", timeout=120, headers={
+        "Content-Type": content_type,
+        "Authorization": _oauth1_header("POST", X_UPLOAD, cfg),
+    })
+    return result.get("media_id_string")
+
+
+def _twitter_upload_video(cfg: dict, path: str) -> Optional[str]:
+    """Chunked INIT/APPEND/FINALIZE upload — the only way X accepts video."""
+    size = os.path.getsize(path)
+    ctype = mimetypes.guess_type(path)[0] or "video/mp4"
+
+    def form(fields, timeout=60):
+        # Form-encoded bodies are part of the OAuth signature base.
+        return _request_json(X_UPLOAD, data=urllib.parse.urlencode(fields).encode(),
+                             method="POST", timeout=timeout, headers={
+                                 "Content-Type": "application/x-www-form-urlencoded",
+                                 "Authorization": _oauth1_header("POST", X_UPLOAD, cfg, fields),
+                             })
+
+    init = form({"command": "INIT", "total_bytes": str(size),
+                 "media_type": ctype, "media_category": "tweet_video"})
+    media_id = init.get("media_id_string")
+    if not media_id:
+        return None
+
+    CHUNK = 4 * 1024 * 1024
+    with open(path, "rb") as fh:
+        index = 0
+        while True:
+            chunk = fh.read(CHUNK)
+            if not chunk:
+                break
+            # APPEND is multipart, so its body stays out of the signature.
+            body, content_type = _multipart(
+                {"command": "APPEND", "media_id": media_id, "segment_index": str(index)},
+                [("media", "chunk", chunk, "application/octet-stream")])
+            _request_json(X_UPLOAD, data=body, method="POST", timeout=300, headers={
+                "Content-Type": content_type,
+                "Authorization": _oauth1_header("POST", X_UPLOAD, cfg),
+            })
+            index += 1
+
+    done = form({"command": "FINALIZE", "media_id": media_id}, timeout=120)
+
+    # X transcodes asynchronously; attaching the id too early fails the post.
+    info = done.get("processing_info") or {}
+    deadline = time.time() + 300
+    while info.get("state") in ("pending", "in_progress") and time.time() < deadline:
+        time.sleep(max(1, int(info.get("check_after_secs", 5))))
+        params = {"command": "STATUS", "media_id": media_id}
+        status = _request_json(X_UPLOAD + "?" + urllib.parse.urlencode(params), timeout=30,
+                               headers={"Authorization": _oauth1_header(
+                                   "GET", X_UPLOAD, cfg, params)})
+        info = status.get("processing_info") or {}
+    if info.get("state") == "failed":
+        log.error(f"[X] transcodage échoué: {info.get('error')}")
+        return None
+    return media_id
+
+
+X_URL_WEIGHT = 23          # X counts every URL as 23 chars, whatever its length
+
+
+def _fit_with_link(text: str, link: str, limit: int = 280) -> str:
+    """Append the URL and keep it intact, trimming the body instead.
+
+    The returned string can be longer than `limit` in raw characters when the
+    URL exceeds 23: X weighs links at a flat 23, so it is the weighted length
+    that has to fit, not len().
+    """
+    if not link or link in text:
+        return text[:limit]
+    room = limit - X_URL_WEIGHT - 1        # the newline before the link
+    body = text.strip()
+    if len(body) > room:
+        body = body[:max(0, room - 1)].rstrip() + "…"
+    return f"{body}\n{link}" if body else link
+
+
+async def _post_twitter(post: dict, text: str, media: list, link: str = "") -> dict:
+    """Post to X. Requires OAuth 1.0a user context — a Bearer token is
+    app-only auth and cannot create posts (it always returns 403)."""
     try:
         cfg = SETTINGS.get("oauth", {}).get("twitter", {})
-        bearer = cfg.get("bearer_token", "")
-        if not bearer:
-            return {"status": "error", "error": "Twitter Bearer Token not configured"}
-        headers = {"Authorization": f"Bearer {bearer}", "Content-Type": "application/json"}
-        data = json.dumps({"text": text[:280]}).encode()
-        req = urllib.request.Request(
-            "https://api.twitter.com/2/tweets",
-            data=data, headers=headers, method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            result = json.loads(r.read().decode())
-        return {"status": "published", "id": result.get("data", {}).get("id")}
+        missing = [k for k in ("api_key", "api_secret", "access_token", "access_token_secret")
+                   if not cfg.get(k)]
+        if missing:
+            return {"status": "error", "error": (
+                f"X needs OAuth 1.0a user credentials — missing: {', '.join(missing)}. "
+                "A Bearer token is app-only and cannot post; generate an access token "
+                "and secret with Read and Write permission in the X developer portal."
+            )}
+
+        # X renders its own card from the URL's Open Graph tags, so the link
+        # must survive truncation rather than be cut in half by it.
+        payload = {"text": _fit_with_link(text, link)}
+
+        # A tweet carries either one video or up to four images, never both.
+        media_ids = []
+        videos = [m for m in (media or []) if _is_video(m)]
+        chosen = videos[:1] if videos else (media or [])[:4]
+        for item in chosen:
+            path = _local_path(item)
+            if not path:
+                if _is_remote(item):
+                    continue  # X has no fetch-by-URL ingest; skip remote entries
+                return {"status": "error", "error": _media_error(item)}
+            mid = (await asyncio.to_thread(_twitter_upload_video, cfg, path) if _is_video(item)
+                   else await asyncio.to_thread(_twitter_upload_media, cfg, path))
+            if mid:
+                media_ids.append(mid)
+        if media_ids:
+            payload["media"] = {"media_ids": media_ids}
+
+        url = "https://api.twitter.com/2/tweets"
+        result = _request_json(url, data=json.dumps(payload).encode(), method="POST", timeout=30,
+                               headers={
+                                   "Content-Type": "application/json",
+                                   "Authorization": _oauth1_header("POST", url, cfg),
+                               })
+        tweet_id = result.get("data", {}).get("id")
+        return {"status": "published", "id": tweet_id,
+                "url": f"https://x.com/i/status/{tweet_id}" if tweet_id else ""}
+    except urllib.error.HTTPError as e:
+        return _http_error(e)
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -715,8 +1169,38 @@ def build_state() -> dict:
         "settings":       {k: v for k, v in SETTINGS.items() if k != "anthropic_api_key"},
     }
 
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
 async def handle_command(ws, msg: dict):
     cmd = msg.get("cmd")
+
+    # ── Media ────────────────────────────────────────────────────────────
+    if cmd == "upload_media":
+        # The dashboard sends the file's bytes base64-encoded over this socket.
+        # Before this existed it only ever sent blob: URLs, which are local to
+        # the browser tab, so nothing could actually be published with media.
+        name = os.path.basename(msg.get("filename", "") or "upload.bin")
+        try:
+            blob = base64.b64decode(msg.get("data", ""), validate=True)
+        except Exception:
+            await ws.send(json.dumps({"type": "media_uploaded", "error": "Invalid base64 payload"}))
+            return
+        if not blob:
+            await ws.send(json.dumps({"type": "media_uploaded", "error": "Empty file"}))
+            return
+        if len(blob) > MAX_UPLOAD_BYTES:
+            await ws.send(json.dumps({"type": "media_uploaded",
+                                      "error": f"File too large ({len(blob) // 1048576} MB, max 25 MB)"}))
+            return
+        stem, ext = os.path.splitext(name)
+        safe = "".join(c for c in stem if c.isalnum() or c in "-_")[:40] or "media"
+        path = os.path.join(MEDIA_DIR, f"{safe}_{secrets.token_hex(4)}{ext[:10]}")
+        with open(path, "wb") as fh:
+            fh.write(blob)
+        log.info(f"[MEDIA] {path} ({len(blob)} bytes)")
+        await ws.send(json.dumps({"type": "media_uploaded", "path": path, "name": name}))
+        return
 
     # ── Posts ────────────────────────────────────────────────────────────
     if cmd == "create_post":
@@ -851,8 +1335,14 @@ async def handle_command(ws, msg: dict):
         if platform and keys:
             if "oauth" not in SETTINGS:
                 SETTINGS["oauth"] = {}
-            SETTINGS["oauth"][platform] = keys
+            # Fusionner, jamais remplacer : le formulaire n'envoie que les
+            # champs remplis, donc une affectation directe effacait la cle
+            # secrete des qu'on resauvegardait juste l'App ID.
+            existant = dict(SETTINGS["oauth"].get(platform) or {})
+            existant.update({k: v for k, v in keys.items() if v})
+            SETTINGS["oauth"][platform] = existant
             save_settings(SETTINGS)
+            log.info(f"[OAUTH] cles {platform} enregistrees: {sorted(existant)}")
             await ws.send(json.dumps({"type": "oauth_saved", "platform": platform}))
 
     # ── Analytics ────────────────────────────────────────────────────────
@@ -921,6 +1411,208 @@ async def ws_handler(websocket):
         CLIENTS.discard(websocket)
 
 # ── Auth / OAuth callback server ───────────────────────────────────────────
+def _fb_complete_oauth(platform: str, code: str, callback: str) -> dict:
+    """Trade an authorization code for a durable page token.
+
+    Facebook hands back a short-lived user token, which is useless an hour
+    later. The chain is: code -> short user token -> long-lived user token ->
+    page token (page tokens minted from a long-lived user token do not expire).
+    """
+    cfg = SETTINGS.get("oauth", {}).get(platform, {})
+    app_id, app_secret = cfg.get("app_id", ""), cfg.get("app_secret", "")
+    if not app_id or not app_secret:
+        return {"error": "App ID / App Secret manquants dans les réglages OAuth"}
+
+    try:
+        short = _request_json(f"{FB_API}/oauth/access_token?" + urllib.parse.urlencode({
+            "client_id": app_id, "client_secret": app_secret,
+            "redirect_uri": callback, "code": code,
+        }), timeout=20)
+        user_token = short.get("access_token")
+        if not user_token:
+            return {"error": f"Échange du code refusé: {short}"}
+
+        # Upgrade to a ~60 day user token before deriving page tokens from it.
+        longed = _request_json(f"{FB_API}/oauth/access_token?" + urllib.parse.urlencode({
+            "grant_type": "fb_exchange_token", "client_id": app_id,
+            "client_secret": app_secret, "fb_exchange_token": user_token,
+        }), timeout=20)
+        user_token = longed.get("access_token", user_token)
+
+        pages = _request_json(
+            f"{FB_API}/me/accounts?" + urllib.parse.urlencode({"access_token": user_token}),
+            timeout=20)
+        data = pages.get("data") or []
+        if not data:
+            return {"error": ("Aucune Page trouvée. Vérifie que tu administres bien une Page "
+                              "et que la permission pages_show_list a été accordée.")}
+
+        page = data[0]
+        acc = {
+            "connected":    True,
+            "platform":     platform,
+            "access_token": page.get("access_token", ""),
+            "user_token":   user_token,
+            "page_id":      page.get("id", ""),
+            "page_name":    page.get("name", ""),
+            "pages":        [{"id": p.get("id"), "name": p.get("name")} for p in data],
+            "name":         page.get("name") or PLATFORMS.get(platform, {}).get("name", platform),
+        }
+
+        # instagram_business_account hangs off the Page, never off /me.
+        if platform == "instagram":
+            link = _request_json(f"{FB_API}/{acc['page_id']}?" + urllib.parse.urlencode({
+                "fields": "instagram_business_account", "access_token": acc["access_token"],
+            }), timeout=20)
+            ig_id = (link.get("instagram_business_account") or {}).get("id")
+            if not ig_id:
+                return {"error": ("Aucun compte Instagram Business rattaché à la Page "
+                                  f"« {acc['page_name']} ». Lie-le dans les paramètres de la Page.")}
+            acc["ig_id"] = ig_id
+
+        return acc
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+_CODES_VUS = {}          # code -> corps HTML deja renvoye
+
+
+def _repondre_http(writer, body: str, content_type: str, cors: str = ""):
+    """Reponse HTTP complete.
+
+    Sans Content-Length ni Connection: close, le navigateur ne sait pas ou
+    s'arrete le corps, attend la suite, puis rejoue la requete — et le second
+    appel arrive avec un code OAuth deja consomme.
+    """
+    corps = body.encode("utf-8")
+    entetes = (
+        "HTTP/1.1 200 OK\r\n"
+        f"Content-Type: {content_type}; charset=utf-8\r\n"
+        f"Content-Length: {len(corps)}\r\n"
+        "Connection: close\r\n"
+        f"{cors}\r\n"
+    ).encode("utf-8")
+    writer.write(entetes + corps)
+
+
+GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
+TT_TOKEN     = "https://open.tiktokapis.com/v2/oauth/token/"
+
+
+def _tiktok_complete_oauth(platform: str, code: str, callback: str) -> dict:
+    """Echange le code TikTok contre un acces, un refresh et l'open_id."""
+    cfg = SETTINGS.get("oauth", {}).get(platform, {})
+    if not cfg.get("client_key") or not cfg.get("client_secret"):
+        return {"error": "Client Key / Client Secret manquants dans les reglages OAuth"}
+    try:
+        # TikTok attend un corps form-encode, pas du JSON, et un code decode.
+        rep = _post_form(TT_TOKEN, {
+            "client_key": cfg["client_key"], "client_secret": cfg["client_secret"],
+            "code": urllib.parse.unquote(code), "grant_type": "authorization_code",
+            "redirect_uri": callback,
+        }, timeout=30)
+        if rep.get("error"):
+            return {"error": f"{rep.get('error')}: {rep.get('error_description', '')}"}
+        acces = rep.get("access_token")
+        if not acces:
+            return {"error": f"Echange du code refuse: {rep}"}
+
+        nom = ""
+        try:
+            info = _request_json(
+                "https://open.tiktokapis.com/v2/user/info/?fields=display_name",
+                headers={"Authorization": f"Bearer {acces}"}, timeout=20)
+            nom = (((info.get("data") or {}).get("user") or {}).get("display_name")) or ""
+        except Exception as e:               # ne jamais casser la connexion ici
+            log.warning(f"[TIKTOK] nom de compte illisible: {e}")
+
+        return {
+            "connected": True, "platform": platform,
+            "access_token": acces,
+            "refresh_token": rep.get("refresh_token", ""),
+            "open_id": rep.get("open_id", ""),
+            "display_name": nom,
+            "name": nom or PLATFORMS.get(platform, {}).get("name", platform),
+        }
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+
+def _refresh_youtube_token():
+    """Rejoue le refresh_token pour obtenir un acces frais.
+
+    Etait appelee dans _post_youtube sur un 401 sans avoir jamais ete
+    definie : la moindre expiration levait un NameError au lieu de renouveler.
+    """
+    cfg = SETTINGS.get("oauth", {}).get("youtube", {})
+    acc = STATE.accounts.get("youtube") or {}
+    refresh = acc.get("refresh_token") or cfg.get("refresh_token", "")
+    if not (refresh and cfg.get("client_id") and cfg.get("client_secret")):
+        log.error("[YOUTUBE] pas de refresh_token — reconnecter la plateforme")
+        return ""
+    try:
+        rep = _post_form(GOOGLE_TOKEN, {
+            "grant_type": "refresh_token", "refresh_token": refresh,
+            "client_id": cfg["client_id"], "client_secret": cfg["client_secret"],
+        }, timeout=30)
+    except urllib.error.HTTPError as e:
+        log.error(f"[YOUTUBE] refus du refresh: {e.read().decode(errors='ignore')[:200]}")
+        return ""
+    jeton = rep.get("access_token", "")
+    if jeton:
+        acc["access_token"] = jeton
+        STATE.accounts["youtube"] = acc
+        SETTINGS["accounts"] = STATE.accounts
+        save_settings(SETTINGS)
+        log.info("[YOUTUBE] acces renouvele")
+    return jeton
+
+
+def _google_complete_oauth(platform: str, code: str, callback: str) -> dict:
+    """Echange le code Google contre un acces et un refresh_token."""
+    cfg = SETTINGS.get("oauth", {}).get(platform, {})
+    if not cfg.get("client_id") or not cfg.get("client_secret"):
+        return {"error": "Client ID / Client Secret manquants dans les reglages OAuth"}
+    try:
+        jetons = _post_form(GOOGLE_TOKEN, {
+            "code": code, "client_id": cfg["client_id"],
+            "client_secret": cfg["client_secret"], "redirect_uri": callback,
+            "grant_type": "authorization_code",
+        }, timeout=30)
+        acces = jetons.get("access_token")
+        if not acces:
+            return {"error": f"Echange du code refuse: {jetons}"}
+
+        nom = ""
+        try:
+            ch = _request_json(
+                "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
+                headers={"Authorization": f"Bearer {acces}"}, timeout=20)
+            items = ch.get("items") or []
+            if items:
+                nom = (items[0].get("snippet") or {}).get("title", "")
+        except Exception as e:               # la chaine ne doit pas casser ici
+            log.warning(f"[YOUTUBE] nom de chaine illisible: {e}")
+
+        return {
+            "connected": True, "platform": platform,
+            "access_token": acces,
+            "refresh_token": jetons.get("refresh_token", ""),
+            "channel_name": nom,
+            "name": nom or PLATFORMS.get(platform, {}).get("name", platform),
+        }
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 async def auth_handler(reader, writer):
     """Handles OAuth callbacks from social platforms"""
     try:
@@ -940,42 +1632,103 @@ async def auth_handler(reader, writer):
             code  = params.get("code", "")
             error = params.get("error", "")
 
+            if code and code in _CODES_VUS:
+                # Un code OAuth ne vaut qu'une fois. Si le navigateur rejoue
+                # l'appel, on rend la meme page plutot que de redemander a
+                # Facebook un echange qu'il refusera.
+                log.info(f"[OAUTH] Code deja traite pour {platform}, rejeu ignore")
+                _repondre_http(writer, _CODES_VUS[code], "text/html", cors)
+                await writer.drain()
+                writer.close()
+                return
+
             if code:
                 log.info(f"[OAUTH] Code reçu pour {platform}")
-                # Store code for token exchange
-                if platform not in STATE.accounts:
-                    STATE.accounts[platform] = {}
-                STATE.accounts[platform]["oauth_code"]  = code
-                STATE.accounts[platform]["connected"]   = True
-                STATE.accounts[platform]["platform"]    = platform
-                STATE.accounts[platform]["name"]        = PLATFORMS.get(platform, {}).get("name", platform)
-                # Notify dashboard
-                asyncio.create_task(broadcast({
-                    "type":     "platform_connected",
-                    "platform": platform,
-                    "account":  STATE.accounts[platform],
-                }))
-                add_notification(f"✅ {PLATFORMS.get(platform,{}).get('name',platform)} connecté !", "success")
-                body = f"""<html><body style="background:#0f0f13;color:#3dffb4;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-                    <div style="text-align:center"><h2>✅ {platform.title()} connecté !</h2>
-                    <p style="color:#9090a8">Tu peux fermer cette fenêtre.</p>
-                    <script>window.close();</script></div></body></html>"""
+                # The code is worthless on its own — it has to be traded for a
+                # token before anything can be published. Skipping this step is
+                # what made the dashboard show "connecté" while every publish
+                # failed with an empty access_token.
+                callback = f"http://localhost:{AUTH_PORT}/oauth/callback/{platform}"
+                if platform in ("facebook", "instagram"):
+                    acc = await asyncio.to_thread(_fb_complete_oauth, platform, code, callback)
+                elif platform == "youtube":
+                    acc = await asyncio.to_thread(_google_complete_oauth, platform, code, callback)
+                elif platform == "tiktok":
+                    acc = await asyncio.to_thread(_tiktok_complete_oauth, platform, code, callback)
+                else:
+                    acc = {"error": f"Échange de token non implémenté pour {platform}"}
+
+                if acc.get("error"):
+                    err = acc["error"]
+                    log.error(f"[OAUTH] {platform}: {err}")
+                    STATE.accounts.setdefault(platform, {})["connected"] = False
+                    add_notification(f"❌ {platform} : {err}", "error")
+                    asyncio.create_task(broadcast({
+                        "type": "oauth_error", "platform": platform, "error": err,
+                    }))
+                    body = f"""<html><body style="background:#0f0f13;color:#ff4d6a;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:24px">
+                        <div style="text-align:center;max-width:560px"><h2>❌ Connexion {platform} échouée</h2>
+                        <p style="color:#9090a8;font-size:14px;line-height:1.5">{err}</p></div></body></html>"""
+                else:
+                    STATE.accounts[platform] = acc
+                    SETTINGS["accounts"] = STATE.accounts
+                    save_settings(SETTINGS)          # survive a restart
+                    log.info(f"[OAUTH] {platform} connecté — page {acc.get('page_name')} ({acc.get('page_id')})")
+                    asyncio.create_task(broadcast({
+                        "type":     "platform_connected",
+                        "platform": platform,
+                        "account":  acc,
+                    }))
+                    add_notification(f"✅ {PLATFORMS.get(platform,{}).get('name',platform)} connecté !", "success")
+                    body = f"""<html><body style="background:#0f0f13;color:#3dffb4;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+                        <div style="text-align:center"><h2>✅ {platform.title()} connecté !</h2>
+                        <p style="color:#9090a8">Page : {acc.get('page_name','')}</p>
+                        <p style="color:#9090a8">Tu peux fermer cette fenêtre.</p>
+                        <script>window.close();</script></div></body></html>"""
             else:
                 body = f"""<html><body style="background:#0f0f13;color:#ff4d6a;font-family:Arial;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
                     <div style="text-align:center"><h2>❌ Erreur: {error}</h2>
                     <script>window.close();</script></div></body></html>"""
 
-            writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n{cors}\r\n{body}".encode())
+            if code:
+                _CODES_VUS[code] = body
+                if len(_CODES_VUS) > 50:
+                    _CODES_VUS.pop(next(iter(_CODES_VUS)))
+            _repondre_http(writer, body, "text/html", cors)
 
         else:
             body = json.dumps({"status": "OmniPost Auth Server", "version": "1.0.0"})
-            writer.write(f"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{cors}\r\n{body}".encode())
+            _repondre_http(writer, body, "application/json", cors)
 
         await writer.drain()
     except Exception as e:
         log.debug(f"[AUTH] Erreur: {e}")
     finally:
         writer.close()
+
+DASHBOARD_FILE = "omnipost_dashboard.html"
+
+
+def ouvrir_dashboard():
+    """Ouvre le tableau de bord au demarrage.
+
+    Il ne s'ouvrait pas tout seul, et un serveur qui tourne sans interface
+    donne l'impression que rien ne demarre. Desactivable par le reglage
+    ouvrir_dashboard.
+    """
+    if not SETTINGS.get("ouvrir_dashboard", True):
+        return
+    chemin = os.path.abspath(DASHBOARD_FILE)
+    if not os.path.isfile(chemin):
+        log.warning(f"[UI] {DASHBOARD_FILE} introuvable a cote de omnipost.py")
+        return
+    try:
+        import webbrowser
+        webbrowser.open(pathlib.Path(chemin).as_uri())
+        log.info(f"[UI] tableau de bord ouvert : {chemin}")
+    except Exception as e:                    # jamais bloquer le demarrage
+        log.warning(f"[UI] ouverture impossible ({e}) — ouvrir {chemin} a la main")
+
 
 # ── Main ───────────────────────────────────────────────────────────────────
 async def main_async():
@@ -985,8 +1738,11 @@ async def main_async():
 
     # WebSocket server
     if HAS_WS:
-        async with websockets.serve(ws_handler, "localhost", WS_PORT):
+        # max_size lifted from the 1 MB default so media uploads fit in a frame.
+        async with websockets.serve(ws_handler, "localhost", WS_PORT,
+                                    max_size=MAX_UPLOAD_BYTES + 2 * 1024 * 1024):
             log.info(f"[WS] Serveur WebSocket sur ws://localhost:{WS_PORT}")
+            ouvrir_dashboard()
             async with auth_srv:
                 tasks = [scheduler_loop()]
                 if HAS_GENIA:

@@ -42,3 +42,9 @@ desktop.ini
 *.spec
 dist/
 build/
+
+# Journal d execution : verrouille par le serveur sous Windows,
+# git ne peut pas le remplacer pendant que OmniPost tourne.
+omnipost.log
+pipeline/
+media/
