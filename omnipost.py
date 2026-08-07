@@ -574,12 +574,104 @@ async def _post_instagram(token: str, caption: str, media: list,
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+TT_API    = "https://open.tiktokapis.com/v2"
+TT_CHUNK  = 32 * 1024 * 1024      # TikTok wants 5–64 MB per chunk
+TT_SINGLE = 64 * 1024 * 1024      # below this the file goes up in one piece
+
+
+def _tiktok_upload(upload_url: str, path: str, size: int, chunk: int, total: int):
+    """PUT each chunk with the Content-Range TikTok expects."""
+    with open(path, "rb") as fh:
+        for i in range(total):
+            start = i * chunk
+            # The last chunk absorbs the remainder rather than leaving a runt
+            # below TikTok's 5 MB floor.
+            length = (size - start) if i == total - 1 else chunk
+            fh.seek(start)
+            blob = fh.read(length)
+            req = urllib.request.Request(upload_url, data=blob, method="PUT", headers={
+                "Content-Type": "video/mp4",
+                "Content-Length": str(len(blob)),
+                "Content-Range": f"bytes {start}-{start + len(blob) - 1}/{size}",
+            })
+            with urllib.request.urlopen(req, timeout=600):
+                pass
+
+
 async def _post_tiktok(token: str, text: str, media: list) -> dict:
+    """Publish a video through the Content Posting API.
+
+    Three steps: init returns an upload URL, the file is PUT in chunks, then
+    the publish status is polled. Previously this returned "manual" and posted
+    nothing, while tiktok sat in the pipeline's default platform list.
+    """
     try:
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        # TikTok video upload is multi-step
-        # For now return instructions
-        return {"status": "manual", "message": "TikTok requires video upload — use TikTok Creator Portal"}
+        videos = [m for m in (media or []) if _is_video(m)]
+        if not videos:
+            return {"status": "error", "error": "TikTok requires a video file"}
+        item = videos[0]
+        cfg = SETTINGS.get("oauth", {}).get("tiktok", {})
+        privacy = cfg.get("privacy_level") or "PUBLIC_TO_EVERYONE"
+        headers = {"Authorization": f"Bearer {token}",
+                   "Content-Type": "application/json; charset=UTF-8"}
+        post_info = {"title": (text or "")[:2200], "privacy_level": privacy}
+
+        if _is_remote(item):
+            source_info = {"source": "PULL_FROM_URL", "video_url": item}
+            path = size = chunk = total = None
+        else:
+            path = _local_path(item)
+            if not path:
+                return {"status": "error", "error": _media_error(item)}
+            size = os.path.getsize(path)
+            if size <= TT_SINGLE:
+                chunk, total = size, 1
+            else:
+                chunk = TT_CHUNK
+                total = max(1, size // chunk)
+            source_info = {"source": "FILE_UPLOAD", "video_size": size,
+                           "chunk_size": chunk, "total_chunk_count": total}
+
+        init = await asyncio.to_thread(
+            _request_json, f"{TT_API}/post/publish/video/init/",
+            json.dumps({"post_info": post_info, "source_info": source_info}).encode(),
+            headers, "POST", 60)
+        err = (init.get("error") or {})
+        if err.get("code") not in (None, "ok"):
+            hint = ""
+            if "privacy" in str(err.get("message", "")).lower():
+                hint = (" — une app non auditée par TikTok ne peut publier "
+                        "qu'en SELF_ONLY ; règle privacy_level en conséquence.")
+            return {"status": "error", "error": f"{err.get('message') or err.get('code')}{hint}"}
+        data = init.get("data") or {}
+        publish_id = data.get("publish_id")
+        if not publish_id:
+            return {"status": "error", "error": f"init sans publish_id: {init}"}
+
+        if path:
+            await asyncio.to_thread(_tiktok_upload, data.get("upload_url"),
+                                    path, size, chunk, total)
+
+        # TikTok processes asynchronously; report only once it is really out.
+        deadline = time.time() + 300
+        etat = "PROCESSING"
+        while time.time() < deadline:
+            st = await asyncio.to_thread(
+                _request_json, f"{TT_API}/post/publish/status/fetch/",
+                json.dumps({"publish_id": publish_id}).encode(), headers, "POST", 30)
+            etat = ((st.get("data") or {}).get("status") or "").upper()
+            if etat in ("PUBLISH_COMPLETE", "FAILED"):
+                break
+            await asyncio.sleep(5)
+
+        if etat == "FAILED":
+            return {"status": "error", "error": f"TikTok a rejeté la publication ({publish_id})"}
+        if etat != "PUBLISH_COMPLETE":
+            return {"status": "pending", "id": publish_id,
+                    "error": "toujours en traitement chez TikTok après 5 min"}
+        return {"status": "published", "id": publish_id}
+    except urllib.error.HTTPError as e:
+        return _http_error(e)
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
