@@ -310,7 +310,8 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
         full_text = f"{content}\n\n{hashtags}".strip()
 
     if platform == "facebook":
-        return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"))
+        return await _post_facebook(token, full_text, media, page_id=acc.get("page_id"),
+                                    link=post.get("link", ""))
     elif platform == "instagram":
         return await _post_instagram(token, full_text, media,
                                      ig_id=acc.get("ig_id"), page_id=acc.get("page_id"))
@@ -321,7 +322,7 @@ async def _publish_to_platform(platform: str, post: dict) -> dict:
     elif platform == "pinterest":
         return await _post_pinterest(token, full_text, media, post.get("link", ""))
     elif platform == "twitter":
-        return await _post_twitter(post, full_text, media)
+        return await _post_twitter(post, full_text, media, link=post.get("link", ""))
     return {"status": "error", "error": "Unknown platform"}
 
 # ── Media / HTTP helpers ───────────────────────────────────────────────────
@@ -403,8 +404,9 @@ def _http_error(e: urllib.error.HTTPError) -> dict:
     return {"status": "error", "error": f"HTTP {e.code}: {e.read().decode(errors='ignore')[:300]}"}
 
 
-async def _post_facebook(token: str, text: str, media: list, page_id: str = None) -> dict:
-    """Post to a Facebook page — text, single photo, or a multi-photo album.
+async def _post_facebook(token: str, text: str, media: list, page_id: str = None,
+                         link: str = "") -> dict:
+    """Post to a Facebook page — link card, video, photo, album or plain text.
 
     Uses page_id if provided (token = PAGE token), otherwise looks it up via
     /me/accounts (token = USER token).
@@ -423,6 +425,17 @@ async def _post_facebook(token: str, text: str, media: list, page_id: str = None
 
         videos = [m for m in (media or []) if _is_video(m)]
         photos = [m for m in (media or []) if not _is_video(m)]
+
+        # ── A link with no media of its own: let Facebook build the preview
+        # card from the destination's Open Graph tags. Sending the URL only in
+        # the message body gives a bare text post with no thumbnail.
+        if link and not videos and not photos:
+            result = _post_form(f"{FB_API}/{page_id}/feed",
+                                {"message": text, "link": link,
+                                 "access_token": page_token}, timeout=60)
+            post_id = result.get("post_id") or result.get("id", "")
+            return {"status": "published", "id": post_id,
+                    "url": f"https://www.facebook.com/{post_id.replace('_', '/posts/')}"}
 
         # ── Video wins: the pipeline renders a 9:16 clip and it used to be
         # filtered out here, so every automated post went out as bare text.
@@ -807,7 +820,26 @@ def _twitter_upload_video(cfg: dict, path: str) -> Optional[str]:
     return media_id
 
 
-async def _post_twitter(post: dict, text: str, media: list) -> dict:
+X_URL_WEIGHT = 23          # X counts every URL as 23 chars, whatever its length
+
+
+def _fit_with_link(text: str, link: str, limit: int = 280) -> str:
+    """Append the URL and keep it intact, trimming the body instead.
+
+    The returned string can be longer than `limit` in raw characters when the
+    URL exceeds 23: X weighs links at a flat 23, so it is the weighted length
+    that has to fit, not len().
+    """
+    if not link or link in text:
+        return text[:limit]
+    room = limit - X_URL_WEIGHT - 1        # the newline before the link
+    body = text.strip()
+    if len(body) > room:
+        body = body[:max(0, room - 1)].rstrip() + "…"
+    return f"{body}\n{link}" if body else link
+
+
+async def _post_twitter(post: dict, text: str, media: list, link: str = "") -> dict:
     """Post to X. Requires OAuth 1.0a user context — a Bearer token is
     app-only auth and cannot create posts (it always returns 403)."""
     try:
@@ -821,7 +853,9 @@ async def _post_twitter(post: dict, text: str, media: list) -> dict:
                 "and secret with Read and Write permission in the X developer portal."
             )}
 
-        payload = {"text": text[:280]}
+        # X renders its own card from the URL's Open Graph tags, so the link
+        # must survive truncation rather than be cut in half by it.
+        payload = {"text": _fit_with_link(text, link)}
 
         # A tweet carries either one video or up to four images, never both.
         media_ids = []
