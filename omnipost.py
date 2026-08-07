@@ -294,7 +294,13 @@ async def publish_post(post: dict) -> dict:
         try:
             result = await _publish_to_platform(platform, post)
             results[platform] = result
-            log.info(f"[PUBLISH] {platform}: {result.get('status')}")
+            # Sans le motif, un « error » dans le journal n'apprend rien et il
+            # faut aller fouiller omnipost_posts.json pour savoir quoi corriger.
+            if result.get("status") == "published":
+                log.info(f"[PUBLISH] {platform}: publie {result.get('url') or result.get('id') or ''}")
+            else:
+                log.error(f"[PUBLISH] {platform}: {result.get('status')} — "
+                          f"{result.get('error') or result.get('message') or 'sans motif'}")
         except Exception as e:
             results[platform] = {"status": "error", "error": str(e)}
             log.error(f"[PUBLISH] {platform} error: {e}")
